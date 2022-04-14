@@ -248,8 +248,8 @@ class FeatureLoss(nn.Module):
         sr_tensor = self.normalize(sr_tensor)
         hr_tensor = self.normalize(hr_tensor)
 
-        sr_features = self.self.feature_extractor(sr_tensor)
-        hr_features = self.self.feature_extractor(hr_tensor)
+        sr_features = self.feature_extractor(sr_tensor)
+        hr_features = self.feature_extractor(hr_tensor)
 
         # Find the feature map difference between the two images
         feature_loss1 = F.l1_loss(sr_features[self.feature_extractor_nodes[0]], hr_features[self.feature_extractor_nodes[0]])
