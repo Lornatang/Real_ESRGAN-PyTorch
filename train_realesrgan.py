@@ -52,11 +52,11 @@ def main():
     print("Define all optimizer scheduler functions successfully.")
 
     if config.resume:
-        print("Loading RRDBNet model weights")
+        print("Loading Real_RRDBNet model weights")
         # Load checkpoint model
         checkpoint = torch.load(config.resume, map_location=lambda storage, loc: storage)
         generator.load_state_dict(checkpoint["state_dict"])
-        print("Loaded RRDBNet model weights.")
+        print("Loaded Real_RRDBNet model weights.")
 
     print("Check whether the pretrained discriminator model is restored...")
     if config.resume_d:

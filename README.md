@@ -13,8 +13,8 @@ This repository contains an op-for-op PyTorch reimplementation of [Real-ESRGAN: 
     - [Download datasets](#download-datasets)
     - [Test](#test)
     - [Train](#train)
-        - [Train RRDBNet model](#train-rrdbnet-model)
-        - [Train ESRGAN model](#train-esrgan-model)
+        - [Train Real_RRDBNet model](#train-real_rrdbnet-model)
+        - [Train Real_ESRGAN model](#train-real_esrgan-model)
     - [Result](#result)
     - [Contributing](#contributing)
     - [Credit](#credit)
@@ -69,8 +69,8 @@ In the following table, the value in `()` indicates the result of the project, a
 
 | Dataset | Scale | Real_RRDBNet (PSNR) | Real_ESRGAN (PSNR) |
 |:-------:|:-----:|:-------------------:|:------------------:|
-|  Set5   |   4   |      -(**-**)       |      -(**-**)      |
-|  Set14  |   4   |      -(**-**)       |      -(**-**)      |
+|  Set5   |   4   |    -(**29.28**)     |    -(**26.50**)    |
+|  Set14  |   4   |    -(**26.95**)     |    -(**25.23**)    |
 
 Low resolution / Recovered High Resolution / Ground Truth
 <span align="center"><img src="assets/result.png"/></span>

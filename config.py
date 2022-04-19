@@ -94,7 +94,7 @@ if mode == "train_realrrdbnet":
     resume = ""
 
     # Total num epochs
-    epochs = 44
+    epochs = 1298
 
     # Optimizer parameter
     model_lr = 2e-4
@@ -125,7 +125,7 @@ if mode == "train_realesrgan":
     resume_g = ""
 
     # Total num epochs
-    epochs = 9
+    epochs = 519
 
     # Feature extraction layer parameter configuration
     feature_extractor_node = ["features.2", "features.7", "features.16", "features.25", "features.34"]
