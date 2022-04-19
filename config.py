@@ -17,6 +17,50 @@ import numpy as np
 import torch
 from torch.backends import cudnn
 
+degradation_model_parameters_dict = {
+    "sinc_kernel_size": 21,
+    "gaussian_kernel_range": [7, 9, 11, 13, 15, 17, 19, 21],
+    "gaussian_kernel_size1": 21,
+    "gaussian_kernel_type": ["isotropic", "anisotropic",
+                             "generalized_isotropic", "generalized_anisotropic",
+                             "plateau_isotropic", "plateau_anisotropic"],
+    # First-order degradation parameters
+    "gaussian_kernel_probability1": [0.45, 0.25, 0.12, 0.03, 0.12, 0.03],
+    "sinc_kernel_probability1": 0.1,
+    "gaussian_sigma_range1": [0.2, 3],
+    "generalized_kernel_beta_range1": [0.5, 4],
+    "plateau_kernel_beta_range1": [1, 2],
+    # Second-order degradation parameters
+    "gaussian_kernel_probability2": [0.45, 0.25, 0.12, 0.03, 0.12, 0.03],
+    "sinc_kernel_probability2": 0.1,
+    "gaussian_sigma_range2": [0.2, 1.5],
+    "generalized_kernel_beta_range2": [0.5, 4],
+    "plateau_kernel_beta_range2": [1, 2],
+    "sinc_kernel_probability3": 0.8,
+}
+
+degradation_process_parameters_dict = {
+    # The probability of triggering a first-order degenerate operation
+    "first_blur_probability": 1.0,
+    # First-Order Degenerate Operating Parameters
+    "resize_probability1": [0.2, 0.7, 0.1],
+    "resize_range1": [0.15, 1.5],
+    "gray_noise_probability1": 0.4,
+    "gaussian_noise_probability1": 0.5,
+    "noise_range1": [1, 30],
+    "poisson_scale_range1": [0.05, 3],
+    "jpeg_range1": [30, 95],
+    # The probability of triggering a second-order degenerate operation
+    "second_blur_probability": 0.8,
+    # Second-Order Degenerate Operating Parameters
+    "resize_probability2": [0.3, 0.4, 0.3],
+    "resize_range2": [0.3, 1.2],
+    "gray_noise_probability2": 0.4,
+    "gaussian_noise_probability2": 0.5,
+    "noise_range2": [1, 25],
+    "poisson_scale_range2": [0.05, 2.5],
+    "jpeg_range2": [30, 95],
+}
 # Random seed to maintain reproducible results
 random.seed(0)
 torch.manual_seed(0)
@@ -25,77 +69,24 @@ np.random.seed(0)
 device = torch.device("cuda", 0)
 # Turning on when the image size does not change during training can speed up training
 cudnn.benchmark = True
-# Image magnification factor
+# Model Architecture Parameters
+in_channels = 3
+out_channels = 3
 upscale_factor = 4
 # Current configuration parameter method
-mode = "train_rrdbnet"
+mode = "train_realrrdbnet"
 # Experiment name, easy to save weights and log files
-exp_name = "RRDBNet_baseline"
-# Degradation model parameters
-gaussian_kernel_range = [7, 9, 11, 13, 15, 17, 19, 21]
-sinc_kernel_size = 21
+exp_name = "RealRRDBNet_baseline"
 
-gaussian_kernel_size1 = 21
-gaussian_kernel_dict1 = {
-    "isotropic": 0.45,
-    "anisotropic ": 0.25,
-    "generalized_isotropic": 0.12,
-    "generalized_anisotropic": 0.03,
-    "plateau_isotropic": 0.12,
-    "plateau_anisotropic": 0.03,
-}
-sinc_kernel_probability1 = 0.1
-gaussian_sigma_range1 = [0.2, 3]
-generalized_kernel_beta_range1 = [0.5, 4]
-plateau_kernel_beta_range1 = [1, 2]
-
-gaussian_kernel_size2 = 21
-gaussian_kernel_dict2 = {
-    "isotropic": 0.45,
-    "anisotropic ": 0.25,
-    "generalized_isotropic": 0.12,
-    "generalized_anisotropic": 0.03,
-    "plateau_isotropic": 0.12,
-    "plateau_anisotropic": 0.03,
-}
-sinc_kernel_probability2 = 0.1
-min_gaussian_sigma2 = 0.2
-max_gaussian_sigma2 = 1.5
-min_generalized_kernel_beta2 = 0.5
-max_generalized_kernel_beta2 = 4
-min_plateau_kernel_beta2 = 1
-max_plateau_kernel_beta2 = 2
-
-sinc_kernel_probability3 = 0.8
-
-# First degradation
-resize_probability1: [0.2, 0.7, 0.1]  # up, down, keep
-resize_range1: [0.15, 1.5]
-gray_noise_probability1: 0.4
-gaussian_noise_probability1: 0.5
-noise_range1: [1, 30]
-poisson_scale_range1: [0.05, 3]
-jpeg_range1: [30, 95]
-
-# Second degradation
-second_blur_probability: 0.8
-resize_probability2: [0.3, 0.4, 0.3]  # up, down, keep
-resize_range2: [0.3, 1.2]
-gaussian_noise_probability2: 0.5
-noise_range2: [1, 25]
-poisson_scale_range2: [0.05, 2.5]
-gray_noise_probability2: 0.4
-jpeg_range2: [30, 95]
-
-if mode == "train_rrdbnet":
+if mode == "train_realrrdbnet":
     # Dataset address
-    train_image_dir = "data/DIV2K/RealESRGAN/train"
-    valid_image_dir = "data/DIV2K/RealESRGAN/valid"
+    train_image_dir = "data/DIV2K/Real_ESRGAN/train"
+    valid_image_dir = "data/DIV2K/Real_ESRGAN/valid"
     test_lr_image_dir = f"data/Set5/LRbicx{upscale_factor}"
     test_hr_image_dir = f"data/Set5/GTmod12"
 
     image_size = 256
-    batch_size = 48
+    batch_size = 24
     num_workers = 4
 
     # Incremental training and migration training
@@ -108,8 +99,13 @@ if mode == "train_rrdbnet":
     # Optimizer parameter
     model_lr = 2e-4
     model_betas = (0.9, 0.99)
+    model_weight_decay = 0.999
 
-    print_frequency = 1000
+    # LR scheduler
+    lr_scheduler_step_size = epochs // 5
+    lr_scheduler_gamma = 0.5
+
+    print_frequency = 100
 
 if mode == "train_realesrgan":
     # Dataset address
@@ -132,22 +128,23 @@ if mode == "train_realesrgan":
     epochs = 9
 
     # Feature extraction layer parameter configuration
-    feature_extractor_node = "features.34"
+    feature_extractor_node = ["features.2", "features.7", "features.16", "features.25", "features.34"]
     normalize_mean = [0.485, 0.456, 0.406]
     normalize_std = [0.229, 0.224, 0.225]
 
     # Loss function weight
-    pixel_weight = 0.01
-    feature_weight = 1.0
-    adversarial_weight = 0.005
+    pixel_weight = 1.0
+    content_weight = [0.1, 0.1, 1.0, 1.0, 1.0]
+    adversarial_weight = 0.1
 
     # Optimizer parameter
     model_lr = 1e-4
     model_betas = (0.9, 0.99)
+    model_weight_decay = 0.999
 
     # LR scheduler parameter
-    lr_scheduler_step_size = epochs // 2
-    lr_scheduler_gamma = 0.1
+    lr_scheduler_milestones = [int(epochs * 0.125), int(epochs * 0.250), int(epochs * 0.500), int(epochs * 0.750)]
+    lr_scheduler_gamma = 0.5
 
     print_frequency = 100
 

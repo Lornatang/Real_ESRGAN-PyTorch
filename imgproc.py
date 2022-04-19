@@ -122,7 +122,8 @@ def mesh_grid(kernel_size: int):
     """
     ax = np.arange(-kernel_size // 2 + 1., kernel_size // 2 + 1.)
     xx, yy = np.meshgrid(ax, ax)
-    xy = np.hstack((xx.reshape((kernel_size * kernel_size, 1)), yy.reshape(kernel_size * kernel_size, 1))).reshape(kernel_size, kernel_size, 2)
+    xy = np.hstack((xx.reshape((kernel_size * kernel_size, 1)), yy.reshape(kernel_size * kernel_size, 1))).reshape(
+        kernel_size, kernel_size, 2)
 
     return xy, xx, yy
 
@@ -166,7 +167,8 @@ def calculate_cumulative_density_function(skew_matrix: np.ndarray, grid: np.ndar
 
 
 # Implementation reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/data/degradations.py`
-def generate_bivariate_gaussian_kernel(kernel_size, sigma_x: float, sigma_y: float, theta: float, grid: np.ndarray = None, isotropic: bool = True):
+def generate_bivariate_gaussian_kernel(kernel_size, sigma_x: float, sigma_y: float, theta: float,
+                                       grid: np.ndarray = None, isotropic: bool = True):
     """Generate a bivariate isotropic or anisotropic Gaussian kernel.
     In the isotropic mode, only `sigma_x` is used. `sigma_y` and `theta` is ignored.
 
@@ -196,7 +198,8 @@ def generate_bivariate_gaussian_kernel(kernel_size, sigma_x: float, sigma_y: flo
 
 
 # Implementation reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/data/degradations.py`
-def generate_bivariate_generalized_gaussian_kernel(kernel_size: int, sigma_x: float, sigma_y: float, theta: float, beta: float,
+def generate_bivariate_generalized_gaussian_kernel(kernel_size: int, sigma_x: float, sigma_y: float, theta: float,
+                                                   beta: float,
                                                    grid: np.ndarray = None, isotropic: bool = True):
     """Generate a bivariate generalized Gaussian kernel.
     Described in `Parameter Estimation For Multivariate Generalized Gaussian Distributions`_ by Pascal et. al (2013).
@@ -224,13 +227,15 @@ def generate_bivariate_generalized_gaussian_kernel(kernel_size: int, sigma_x: fl
 
     inverse_sigma = np.linalg.inv(sigma_matrix)
     bivariate_generalized_gaussian_kernel = np.exp(-0.5 * np.power(np.sum(np.dot(grid, inverse_sigma) * grid, 2), beta))
-    bivariate_generalized_gaussian_kernel = bivariate_generalized_gaussian_kernel / np.sum(bivariate_generalized_gaussian_kernel)
+    bivariate_generalized_gaussian_kernel = bivariate_generalized_gaussian_kernel / np.sum(
+        bivariate_generalized_gaussian_kernel)
 
     return bivariate_generalized_gaussian_kernel
 
 
 # Implementation reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/data/degradations.py`
-def generate_bivariate_plateau_gaussian_kernel(kernel_size: int, sigma_x: float, sigma_y: float, theta: float, beta: float,
+def generate_bivariate_plateau_gaussian_kernel(kernel_size: int, sigma_x: float, sigma_y: float, theta: float,
+                                               beta: float,
                                                grid: np.ndarray = None, isotropic: bool = True):
     """Generate a plateau-like anisotropic kernel.
     In the isotropic mode, only `sigma_x` is used. `sigma_y` and `theta` is ignored.
@@ -297,7 +302,8 @@ def random_bivariate_gaussian_kernel(kernel_size: int,
         sigma_y = sigma_x
         rotation = 0
 
-    bivariate_gaussian_kernel = generate_bivariate_gaussian_kernel(kernel_size, sigma_x, sigma_y, rotation, isotropic=isotropic)
+    bivariate_gaussian_kernel = generate_bivariate_gaussian_kernel(kernel_size, sigma_x, sigma_y, rotation,
+                                                                   isotropic=isotropic)
 
     # add multiplicative noise
     if noise_range is not None:
@@ -351,7 +357,8 @@ def random_bivariate_generalized_gaussian_kernel(kernel_size: int,
     else:
         beta = np.random.uniform(1, beta_range[1])
 
-    bivariate_generalized_gaussian_kernel = generate_bivariate_generalized_gaussian_kernel(kernel_size, sigma_x, sigma_y, rotation, beta,
+    bivariate_generalized_gaussian_kernel = generate_bivariate_generalized_gaussian_kernel(kernel_size, sigma_x,
+                                                                                           sigma_y, rotation, beta,
                                                                                            isotropic=isotropic)
 
     # add multiplicative noise
@@ -360,7 +367,8 @@ def random_bivariate_generalized_gaussian_kernel(kernel_size: int,
         noise = np.random.uniform(noise_range[0], noise_range[1], size=bivariate_generalized_gaussian_kernel.shape)
         bivariate_generalized_gaussian_kernel = bivariate_generalized_gaussian_kernel * noise
 
-    bivariate_generalized_gaussian_kernel = bivariate_generalized_gaussian_kernel / np.sum(bivariate_generalized_gaussian_kernel)
+    bivariate_generalized_gaussian_kernel = bivariate_generalized_gaussian_kernel / np.sum(
+        bivariate_generalized_gaussian_kernel)
 
     return bivariate_generalized_gaussian_kernel
 
@@ -408,7 +416,8 @@ def random_bivariate_plateau_gaussian_kernel(kernel_size: int,
     else:
         beta = np.random.uniform(1, beta_range[1])
 
-    bivariate_plateau_gaussian_kernel = generate_bivariate_plateau_gaussian_kernel(kernel_size, sigma_x, sigma_y, rotation, beta, isotropic=isotropic)
+    bivariate_plateau_gaussian_kernel = generate_bivariate_plateau_gaussian_kernel(kernel_size, sigma_x, sigma_y,
+                                                                                   rotation, beta, isotropic=isotropic)
     # add multiplicative noise
     if noise_range is not None:
         assert noise_range[0] < noise_range[1], 'Wrong noise range.'
@@ -421,15 +430,15 @@ def random_bivariate_plateau_gaussian_kernel(kernel_size: int,
 
 
 # Implementation reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/data/degradations.py`
-def random_mixed_kernels(kernel_type: tuple,
+def random_mixed_kernels(kernel_type: list,
                          kernel_prob: float,
                          kernel_size: int,
-                         sigma_x_range: tuple,
-                         sigma_y_range=tuple,
-                         rotation_range=tuple,
-                         generalized_kernel_beta_range=tuple,
-                         plateau_kernel_beta_range=tuple,
-                         noise_range=None):
+                         sigma_x_range: list,
+                         sigma_y_range: list,
+                         rotation_range: list,
+                         generalized_kernel_beta_range: list,
+                         plateau_kernel_beta_range: list,
+                         noise_range: None):
     """Randomly generate mixed kernels
 
     Args:
@@ -449,23 +458,35 @@ def random_mixed_kernels(kernel_type: tuple,
     """
     kernel_type = random.choices(kernel_type, kernel_prob)[0]
     if kernel_type == "isotropic":
-        mixed_kernels = random_bivariate_gaussian_kernel(
-            kernel_size, sigma_x_range, sigma_y_range, rotation_range, noise_range=noise_range, isotropic=True)
+        mixed_kernels = random_bivariate_gaussian_kernel(kernel_size, sigma_x_range, sigma_y_range, rotation_range,
+                                                         noise_range=noise_range,
+                                                         isotropic=True)
     elif kernel_type == "anisotropic":
-        mixed_kernels = random_bivariate_gaussian_kernel(
-            kernel_size, sigma_x_range, sigma_y_range, rotation_range, noise_range=noise_range, isotropic=False)
+        mixed_kernels = random_bivariate_gaussian_kernel(kernel_size, sigma_x_range, sigma_y_range, rotation_range,
+                                                         noise_range=noise_range,
+                                                         isotropic=False)
     elif kernel_type == "generalized_isotropic":
-        mixed_kernels = random_bivariate_generalized_gaussian_kernel(kernel_size, sigma_x_range, sigma_y_range, rotation_range,
-                                                                     generalized_kernel_beta_range, noise_range=noise_range, isotropic=True)
+        mixed_kernels = random_bivariate_generalized_gaussian_kernel(kernel_size, sigma_x_range, sigma_y_range,
+                                                                     rotation_range,
+                                                                     generalized_kernel_beta_range,
+                                                                     noise_range=noise_range, isotropic=True)
     elif kernel_type == "generalized_anisotropic":
-        mixed_kernels = random_bivariate_generalized_gaussian_kernel(kernel_size, sigma_x_range, sigma_y_range, rotation_range,
-                                                                     generalized_kernel_beta_range, noise_range=noise_range, isotropic=False)
+        mixed_kernels = random_bivariate_generalized_gaussian_kernel(kernel_size, sigma_x_range, sigma_y_range,
+                                                                     rotation_range,
+                                                                     generalized_kernel_beta_range,
+                                                                     noise_range=noise_range, isotropic=False)
     elif kernel_type == "plateau_isotropic":
-        mixed_kernels = random_bivariate_plateau_gaussian_kernel(kernel_size, sigma_x_range, sigma_y_range, rotation_range, plateau_kernel_beta_range,
+        mixed_kernels = random_bivariate_plateau_gaussian_kernel(kernel_size, sigma_x_range, sigma_y_range,
+                                                                 rotation_range, plateau_kernel_beta_range,
                                                                  noise_range=None, isotropic=True)
     elif kernel_type == "plateau_anisotropic":
-        mixed_kernels = random_bivariate_plateau_gaussian_kernel(kernel_size, sigma_x_range, sigma_y_range, rotation_range, plateau_kernel_beta_range,
+        mixed_kernels = random_bivariate_plateau_gaussian_kernel(kernel_size, sigma_x_range, sigma_y_range,
+                                                                 rotation_range, plateau_kernel_beta_range,
                                                                  noise_range=None, isotropic=False)
+    else:
+        mixed_kernels = random_bivariate_gaussian_kernel(kernel_size, sigma_x_range, sigma_y_range, rotation_range,
+                                                         noise_range=noise_range,
+                                                         isotropic=True)
 
     return mixed_kernels
 
@@ -480,18 +501,18 @@ def sinc_kernel(cutoff: float, kernel_size: int, pad_to: int = 0):
         pad_to (int): pad kernel size to desired size, must be odd or zero. Default: 0
 
     """
-    assert kernel_size % 2 == 1, 'Kernel size must be an odd number.'
+    assert kernel_size % 2 == 1, "Kernel size must be an odd number."
+    np.seterr(divide="ignore", invalid="ignore")
     kernel = np.fromfunction(
-        lambda x, y: cutoff * special.j1(cutoff * np.sqrt((x - (kernel_size - 1) / 2) ** 2 + (y - (kernel_size - 1) / 2) ** 2)) / (
-                2 * np.pi * np.sqrt((x - (kernel_size - 1) / 2) ** 2 + (y - (kernel_size - 1) / 2) ** 2)), [kernel_size, kernel_size])
+        lambda x, y: cutoff * special.j1(cutoff * np.sqrt(
+            (x - (kernel_size - 1) / 2) ** 2 + (y - (kernel_size - 1) / 2) ** 2)) / (2 * np.pi * np.sqrt(
+            (x - (kernel_size - 1) / 2) ** 2 + (y - (kernel_size - 1) / 2) ** 2)), [kernel_size, kernel_size])
     kernel[(kernel_size - 1) // 2, (kernel_size - 1) // 2] = cutoff ** 2 / (4 * np.pi)
-    sinc_kernel = kernel / np.sum(kernel)
-
+    kernel = kernel / np.sum(kernel)
     if pad_to > kernel_size:
         pad_size = (pad_to - kernel_size) // 2
-        sinc_kernel = np.pad(sinc_kernel, ((pad_size, pad_size), (pad_size, pad_size)))
-
-    return sinc_kernel
+        kernel = np.pad(kernel, ((pad_size, pad_size), (pad_size, pad_size)))
+    return kernel
 
 
 # Implementation reference `https://dsp.stackexchange.com/questions/58301/2-d-circularly-symmetric-low-pass-filter`
@@ -635,7 +656,8 @@ def random_add_gaussian_noise(image, sigma_range=(0, 1.0), gray_prob=0, clip=Tru
 
 # Implementation reference `https://dsp.stackexchange.com/questions/58301/2-d-circularly-symmetric-low-pass-filter`
 def random_generate_gaussian_noise_pt(image, sigma_range=(0, 10), gray_prob=0):
-    sigma = torch.rand(image.size(0), dtype=image.dtype, device=image.device) * (sigma_range[1] - sigma_range[0]) + sigma_range[0]
+    sigma = torch.rand(image.size(0), dtype=image.dtype, device=image.device) * (sigma_range[1] - sigma_range[0]) + \
+            sigma_range[0]
     gray_noise = torch.rand(image.size(0), dtype=image.dtype, device=image.device)
     gray_noise = (gray_noise < gray_prob).float()
     gaussian_noise = generate_gaussian_noise_pt(image, sigma, gray_noise)
@@ -826,7 +848,8 @@ def random_add_poisson_noise(image, scale_range=(0, 1.0), gray_prob=0, clip=True
 
 # Implementation reference `https://github.com/scikit-image/scikit-image/blob/main/skimage/util/noise.py#L37-L219`
 def random_generate_poisson_noise_pt(image, scale_range=(0, 1.0), gray_prob=0):
-    scale = torch.rand(image.size(0), dtype=image.dtype, device=image.device) * (scale_range[1] - scale_range[0]) + scale_range[0]
+    scale = torch.rand(image.size(0), dtype=image.dtype, device=image.device) * (scale_range[1] - scale_range[0]) + \
+            scale_range[0]
     gray_noise = torch.rand(image.size(0), dtype=image.dtype, device=image.device)
     gray_noise = (gray_noise < gray_prob).float()
     poisson_noise = generate_poisson_noise_pt(image, scale, gray_noise)
@@ -1427,8 +1450,9 @@ def cubic(x: Any):
     absx = torch.abs(x)
     absx2 = absx ** 2
     absx3 = absx ** 3
-    return (1.5 * absx3 - 2.5 * absx2 + 1) * ((absx <= 1).type_as(absx)) + (-0.5 * absx3 + 2.5 * absx2 - 4 * absx + 2) * (
-        ((absx > 1) * (absx <= 2)).type_as(absx))
+    return (1.5 * absx3 - 2.5 * absx2 + 1) * ((absx <= 1).type_as(absx)) + (
+            -0.5 * absx3 + 2.5 * absx2 - 4 * absx + 2) * (
+               ((absx > 1) * (absx <= 2)).type_as(absx))
 
 
 # Code reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/utils/matlab_functions.py`
@@ -1469,7 +1493,8 @@ def calculate_weights_indices(in_length: int, out_length: int, scale: float, ker
 
     # The indices of the input pixels involved in computing the k-th output
     # pixel are in row k of the indices matrix.
-    indices = left.view(out_length, 1).expand(out_length, p) + torch.linspace(0, p - 1, p).view(1, p).expand(out_length, p)
+    indices = left.view(out_length, 1).expand(out_length, p) + torch.linspace(0, p - 1, p).view(1, p).expand(out_length,
+                                                                                                             p)
 
     # The weights used to compute the k-th output pixel are in row k of the
     # weights matrix.
@@ -1533,8 +1558,10 @@ def imresize(image: Any, scale_factor: float, antialiasing: bool = True) -> Any:
     kernel_width = 4
 
     # get weights and indices
-    weights_h, indices_h, sym_len_hs, sym_len_he = calculate_weights_indices(in_h, out_h, scale_factor, kernel_width, antialiasing)
-    weights_w, indices_w, sym_len_ws, sym_len_we = calculate_weights_indices(in_w, out_w, scale_factor, kernel_width, antialiasing)
+    weights_h, indices_h, sym_len_hs, sym_len_he = calculate_weights_indices(in_h, out_h, scale_factor, kernel_width,
+                                                                             antialiasing)
+    weights_w, indices_w, sym_len_ws, sym_len_we = calculate_weights_indices(in_w, out_w, scale_factor, kernel_width,
+                                                                             antialiasing)
     # process H dimension
     # symmetric copying
     img_aug = torch.FloatTensor(in_c, in_h + sym_len_hs + sym_len_he, in_w)
@@ -1604,7 +1631,8 @@ def rgb2ycbcr(image: np.ndarray, use_y_channel: bool = False) -> np.ndarray:
     if use_y_channel:
         image = np.dot(image, [65.481, 128.553, 24.966]) + 16.0
     else:
-        image = np.matmul(image, [[65.481, -37.797, 112.0], [128.553, -74.203, -93.786], [24.966, 112.0, -18.214]]) + [16, 128, 128]
+        image = np.matmul(image, [[65.481, -37.797, 112.0], [128.553, -74.203, -93.786], [24.966, 112.0, -18.214]]) + [
+            16, 128, 128]
 
     image /= 255.
     image = image.astype(np.float32)
@@ -1627,7 +1655,8 @@ def bgr2ycbcr(image: np.ndarray, use_y_channel: bool = False) -> np.ndarray:
     if use_y_channel:
         image = np.dot(image, [24.966, 128.553, 65.481]) + 16.0
     else:
-        image = np.matmul(image, [[24.966, 112.0, -18.214], [128.553, -74.203, -93.786], [65.481, -37.797, 112.0]]) + [16, 128, 128]
+        image = np.matmul(image, [[24.966, 112.0, -18.214], [128.553, -74.203, -93.786], [65.481, -37.797, 112.0]]) + [
+            16, 128, 128]
 
     image /= 255.
     image = image.astype(np.float32)
@@ -1706,27 +1735,45 @@ def center_crop(image: np.ndarray, image_size: int) -> np.ndarray:
     return patch_image
 
 
-def random_crop(image: np.ndarray, image_size: int) -> np.ndarray:
+def random_crop(lr_images: torch.Tensor, hr_images: torch.Tensor,
+                hr_image_size: int, upscale_factor: int) -> [torch.Tensor, torch.Tensor]:
     """Crop small image patches from one image.
 
     Args:
-        image (np.ndarray): The input image for `OpenCV.imread`.
-        image_size (int): The size of the captured image area.
+        lr_images (torch.Tensor): Low resolution images
+        hr_images (torch.Tensor): High resolution images
+        hr_image_size (int): The size of the captured high-resolution image area.
+        upscale_factor (int): How many times the high-resolution image should be the low-resolution image
 
     Returns:
-        np.ndarray: Small patch image.
-    """
+        patch_lr_images, patch_hr_images (torch.Tensor, torch.Tensor): Small lr patch images, Small hr patch images
 
-    image_height, image_width = image.shape[:2]
+    """
+    hr_image_height, hr_image_width = hr_images[0].size()[1:]
 
     # Just need to find the top and left coordinates of the image
-    top = random.randint(0, image_height - image_size)
-    left = random.randint(0, image_width - image_size)
+    hr_top = random.randint(0, hr_image_height - hr_image_size)
+    hr_left = random.randint(0, hr_image_width - hr_image_size)
+
+    # Define the LR image position
+    lr_top = hr_top // upscale_factor
+    lr_left = hr_left // upscale_factor
+    lr_image_size = hr_image_size // upscale_factor
+
+    # Create patch images
+    patch_lr_images = torch.zeros([lr_images.shape[0], lr_images.shape[1], lr_image_size, lr_image_size],
+                                  dtype=lr_images.dtype,
+                                  device=lr_images.device)
+    patch_hr_images = torch.zeros([hr_images.shape[0], hr_images.shape[1], hr_image_size, hr_image_size],
+                                  dtype=lr_images.dtype,
+                                  device=hr_images.device)
 
     # Crop image patch
-    patch_image = image[top:top + image_size, left:left + image_size, ...]
+    for i in range(lr_images.shape[0]):
+        patch_lr_images[i, :, :, :] = lr_images[i, :, lr_top:lr_top + lr_image_size, lr_left:lr_left + lr_image_size]
+        patch_hr_images[i, :, :, :] = hr_images[i, :, hr_top:hr_top + hr_image_size, hr_left:hr_left + hr_image_size]
 
-    return patch_image
+    return patch_lr_images, patch_hr_images
 
 
 def random_rotate(image: np.ndarray, angles: list, center=None, scale_factor: float = 1.0) -> np.ndarray:
@@ -1735,7 +1782,8 @@ def random_rotate(image: np.ndarray, angles: list, center=None, scale_factor: fl
     Args:
         image (np.ndarray): The input image for `OpenCV.imread`.
         angles (list): Specify the rotation angle.
-        center (tuple[int]): Image rotation center. If the center is None, initialize it as the center of the image. ``Default: None``.
+        center (tuple[int]): Image rotation center. If the center is None,
+            initialize it as the center of the image. ``Default: None``.
         scale_factor (float): scaling factor. Default: 1.0.
 
     Returns:

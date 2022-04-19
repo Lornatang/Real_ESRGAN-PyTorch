@@ -19,10 +19,45 @@ from torchvision import transforms
 from torchvision.models.feature_extraction import create_feature_extractor
 
 __all__ = [
+    "EMA",
     "ResidualDenseBlock", "ResidualResidualDenseBlock",
     "Discriminator", "Generator",
-    "FeatureLoss"
+    "ContentLoss"
 ]
+
+
+class EMA(nn.Module):
+    def __init__(self, model: nn.Module, weight_decay: float) -> None:
+        super(EMA, self).__init__()
+        self.model = model
+        self.weight_decay = weight_decay
+        self.shadow = {}
+        self.backup = {}
+
+    def register(self) -> None:
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                self.shadow[name] = param.data.clone()
+
+    def update(self) -> None:
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                assert name in self.shadow
+                new_average = (1.0 - self.weight_decay) * param.data + self.weight_decay * self.shadow[name]
+                self.shadow[name] = new_average.clone()
+
+    def apply_shadow(self) -> None:
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                assert name in self.shadow
+                self.backup[name] = param.data
+                param.data = self.shadow[name]
+
+    def restore(self) -> None:
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                assert name in self.backup
+                param.data = self.backup[name]
 
 
 class ResidualDenseBlock(nn.Module):
@@ -143,15 +178,15 @@ class Discriminator(nn.Module):
 class Generator(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, upscale_factor: int) -> None:
         super(Generator, self).__init__()
-        if upscale_factor == 4:
-            in_channels *= 1
-            downscale_factor = 1
         if upscale_factor == 2:
             in_channels *= 4
             downscale_factor = 2
         elif upscale_factor == 1:
             in_channels *= 16
             downscale_factor = 4
+        else:
+            in_channels *= 1
+            downscale_factor = 1
 
         # Down-sampling layer
         self.downsampling = nn.PixelUnshuffle(downscale_factor)
@@ -185,7 +220,7 @@ class Generator(nn.Module):
 
     # The model should be defined in the Torch.script method.
     def _forward_impl(self, x: torch.Tensor) -> torch.Tensor:
-        # If upscale_factor not equal 4, must use torch.pixel_unshuffle() ops
+        # If upscale_factor not equal 4, must use nn.PixelUnshuffle() ops
         out = self.downsampling(x)
 
         out1 = self.conv1(out)
@@ -213,7 +248,7 @@ class Generator(nn.Module):
                     nn.init.constant_(module.bias, 0)
 
 
-class FeatureLoss(nn.Module):
+class ContentLoss(nn.Module):
     """Constructs a content loss function based on the VGG19 network.
     Using high-level feature mapping layers from the latter layers will focus more on the texture content of the image.
 
@@ -224,26 +259,28 @@ class FeatureLoss(nn.Module):
 
      """
 
-    def __init__(self, feature_extractor_nodes: str, normalize_mean: list, normalize_std: list) -> None:
-        super(FeatureLoss, self).__init__()
+    def __init__(self, feature_extractor_nodes: list, normalize_mean: list, normalize_std: list) -> None:
+        super(ContentLoss, self).__init__()
         # Get the name of the specified feature extraction node
         self.feature_extractor_nodes = feature_extractor_nodes
         # Load the VGG19 model trained on the ImageNet dataset.
         model = models.vgg19(True)
         # Extract the thirty-sixth layer output in the VGG19 model as the content loss.
-        self.feature_extractor = create_feature_extractor(model, [feature_extractor_nodes])
+        self.feature_extractor = create_feature_extractor(model, feature_extractor_nodes)
 
         # set to validation mode
         self.feature_extractor.eval()
 
-        # The preprocessing method of the input data. This is the VGG model preprocessing method of the ImageNet dataset.
+        # The preprocessing method of the input data.
+        # This is the VGG model preprocessing method of the ImageNet dataset.
         self.normalize = transforms.Normalize(normalize_mean, normalize_std, True)
 
         # Freeze model parameters.
         for model_parameters in self.feature_extractor.parameters():
             model_parameters.requires_grad = False
 
-    def forward(self, sr_tensor: torch.Tensor, hr_tensor: torch.Tensor) -> torch.Tensor:
+    def forward(self, sr_tensor: torch.Tensor, hr_tensor: torch.Tensor) -> [torch.Tensor, torch.Tensor,
+                                                                            torch.Tensor, torch.Tensor]:
         # Standardized operations
         sr_tensor = self.normalize(sr_tensor)
         hr_tensor = self.normalize(hr_tensor)
@@ -252,9 +289,13 @@ class FeatureLoss(nn.Module):
         hr_features = self.feature_extractor(hr_tensor)
 
         # Find the feature map difference between the two images
-        feature_loss1 = F.l1_loss(sr_features[self.feature_extractor_nodes[0]], hr_features[self.feature_extractor_nodes[0]])
-        feature_loss2 = F.l1_loss(sr_features[self.feature_extractor_nodes[1]], hr_features[self.feature_extractor_nodes[1]])
-        feature_loss3 = F.l1_loss(sr_features[self.feature_extractor_nodes[2]], hr_features[self.feature_extractor_nodes[2]])
-        feature_loss4 = F.l1_loss(sr_features[self.feature_extractor_nodes[3]], hr_features[self.feature_extractor_nodes[3]])
+        feature_loss1 = F.l1_loss(sr_features[self.feature_extractor_nodes[0]],
+                                  hr_features[self.feature_extractor_nodes[0]])
+        feature_loss2 = F.l1_loss(sr_features[self.feature_extractor_nodes[1]],
+                                  hr_features[self.feature_extractor_nodes[1]])
+        feature_loss3 = F.l1_loss(sr_features[self.feature_extractor_nodes[2]],
+                                  hr_features[self.feature_extractor_nodes[2]])
+        feature_loss4 = F.l1_loss(sr_features[self.feature_extractor_nodes[3]],
+                                  hr_features[self.feature_extractor_nodes[3]])
 
         return feature_loss1, feature_loss2, feature_loss3, feature_loss4
