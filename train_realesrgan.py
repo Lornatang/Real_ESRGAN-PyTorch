@@ -40,7 +40,7 @@ def main():
     print("Load dataset successfully.")
 
     discriminator, generator = build_model()
-    print("Build Real-ESRGAN model successfully.")
+    print("Build RealESRGAN model successfully.")
 
     psnr_criterion, pixel_criterion, content_criterion, adversarial_criterion = define_loss()
     print("Define all loss functions successfully.")
@@ -52,11 +52,11 @@ def main():
     print("Define all optimizer scheduler functions successfully.")
 
     if config.resume:
-        print("Loading Real_RRDBNet model weights")
+        print("Loading RealESRNet model weights")
         # Load checkpoint model
         checkpoint = torch.load(config.resume, map_location=lambda storage, loc: storage)
         generator.load_state_dict(checkpoint["state_dict"])
-        print("Loaded Real_RRDBNet model weights.")
+        print("Loaded RealESRNet model weights.")
 
     print("Check whether the pretrained discriminator model is restored...")
     if config.resume_d:
@@ -194,7 +194,7 @@ def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher, CUDAPrefetcher]:
                                  num_workers=1,
                                  pin_memory=True,
                                  drop_last=False,
-                                 persistent_workers=False)
+                                 persistent_workers=True)
 
     # Place all data on the preprocessing data loader
     train_prefetcher = CUDAPrefetcher(train_dataloader, config.device)
@@ -386,7 +386,7 @@ def train(discriminator,
 def validate(model, valid_prefetcher, psnr_criterion, epoch, writer, mode) -> float:
     batch_time = AverageMeter("Time", ":6.3f")
     psnres = AverageMeter("PSNR", ":4.2f")
-    progress = ProgressMeter(len(valid_prefetcher), [batch_time, psnres], prefix="Valid: ")
+    progress = ProgressMeter(len(valid_prefetcher), [batch_time, psnres], prefix=f"{mode}: ")
 
     # Put the model in verification mode
     model.eval()
@@ -441,10 +441,8 @@ def validate(model, valid_prefetcher, psnr_criterion, epoch, writer, mode) -> fl
     # Print average PSNR metrics
     progress.display_summary()
 
-    if mode == "Valid":
-        writer.add_scalar("Valid/PSNR", psnres.avg, epoch + 1)
-    elif mode == "Test":
-        writer.add_scalar("Test/PSNR", psnres.avg, epoch + 1)
+    if mode == "Valid" or mode == "Test":
+        writer.add_scalar(f"{mode}/PSNR", psnres.avg, epoch + 1)
     else:
         raise ValueError("Unsupported mode, please use `Valid` or `Test`.")
 

@@ -27,12 +27,12 @@ from model import Generator
 def main() -> None:
     # Initialize the super-resolution model
     model = Generator(config.in_channels, config.out_channels, config.upscale_factor).to(config.device)
-    print("Build Real-ESRGAN model successfully.")
+    print("Build RealESRGAN model successfully.")
 
     # Load the super-resolution model weights
     checkpoint = torch.load(config.model_path, map_location=lambda storage, loc: storage)
     model.load_state_dict(checkpoint["state_dict"])
-    print(f"Load Real-ESRGAN model weights `{os.path.abspath(config.model_path)}` successfully.")
+    print(f"Load RealESRGAN model weights `{os.path.abspath(config.model_path)}` successfully.")
 
     # Create a folder of super-resolution experiment results
     results_dir = os.path.join("results", "test", config.exp_name)

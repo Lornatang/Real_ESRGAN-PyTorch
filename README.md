@@ -13,8 +13,8 @@ This repository contains an op-for-op PyTorch reimplementation of [Real-ESRGAN: 
     - [Download datasets](#download-datasets)
     - [Test](#test)
     - [Train](#train)
-        - [Train Real_RRDBNet model](#train-real_rrdbnet-model)
-        - [Train Real_ESRGAN model](#train-real_esrgan-model)
+        - [Train RealESRNet model](#train-realesrnet-model)
+        - [Train RealESRGAN model](#train-realesrgan-model)
     - [Result](#result)
     - [Contributing](#contributing)
     - [Credit](#credit)
@@ -49,12 +49,12 @@ Modify the contents of the `config.py` file as follows.
 
 If you want to load weights that you've trained before, modify the contents of the file as follows.
 
-### Train Real_RRDBNet model
+### Train RealESRNet model
 
 - line 93: `start_epoch` change number of RealRRDBNet training iterations in the previous round.
 - line 94: `resume` change to RealRRDBNet weight address that needs to be loaded.
 
-### Train Real_ESRGAN model
+### Train RealESRGAN model
 
 - line 122: `start_epoch` change number of Real_ESRGAN training iterations in the previous round.
 - line 123: `resume` change to Real_RRDBNet weight address that needs to be loaded.
@@ -99,7 +99,7 @@ dynamics. Extensive comparisons have shown its superior visual performance than 
 also provide efficient implementations to synthesize training pairs on the fly.
 at [this https URL](https://github.com/xinntao/ESRGAN).
 
-[[Paper]](https://arxiv.org/pdf/1609.04802) [[Code(PyTorch)]](https://github.com/xinntao/Real-ESRGAN)
+[[Paper]](https://arxiv.org/pdf/1609.04802) [[Author implement(PyTorch)]](https://github.com/xinntao/Real-ESRGAN)
 
 ```bibtex
 @InProceedings{wang2021realesrgan,
