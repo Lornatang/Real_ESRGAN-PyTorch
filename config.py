@@ -74,11 +74,11 @@ in_channels = 3
 out_channels = 3
 upscale_factor = 4
 # Current configuration parameter method
-mode = "train_realrrdbnet"
+mode = "train_realesrnet"
 # Experiment name, easy to save weights and log files
-exp_name = "RealRRDBNet_baseline"
+exp_name = "RealESRNet_baseline"
 
-if mode == "train_realrrdbnet":
+if mode == "train_realesrnet":
     # Dataset address
     train_image_dir = "data/DIV2K/Real_ESRGAN/train"
     valid_image_dir = "data/DIV2K/Real_ESRGAN/valid"
@@ -86,7 +86,7 @@ if mode == "train_realrrdbnet":
     test_hr_image_dir = f"data/Set5/GTmod12"
 
     image_size = 256
-    batch_size = 24
+    batch_size = 48
     num_workers = 4
 
     # Incremental training and migration training
@@ -109,8 +109,8 @@ if mode == "train_realrrdbnet":
 
 if mode == "train_realesrgan":
     # Dataset address
-    train_image_dir = "data/DIV2K/RealESRGAN/train"
-    valid_image_dir = "data/DIV2K/RealESRGAN/valid"
+    train_image_dir = "data/DIV2K/Real_ESRGAN/train"
+    valid_image_dir = "data/DIV2K/Real_ESRGAN/valid"
     test_lr_image_dir = f"data/Set5/LRbicx{upscale_factor}"
     test_hr_image_dir = f"data/Set5/GTmod12"
 
@@ -120,7 +120,7 @@ if mode == "train_realesrgan":
 
     # Incremental training and migration training
     start_epoch = 0
-    resume = "results/RRDBNet_baseline/g_last.pth.tar"
+    resume = "results/RealESRNet_baseline/g_last.pth.tar"
     resume_d = ""
     resume_g = ""
 
