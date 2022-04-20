@@ -99,7 +99,7 @@ if mode == "train_realesrnet":
     # Optimizer parameter
     model_lr = 2e-4
     model_betas = (0.9, 0.99)
-    model_weight_decay = 0.999
+    ema_model_weight_decay = 0.999
 
     # LR scheduler
     lr_scheduler_step_size = epochs // 5
@@ -140,7 +140,7 @@ if mode == "train_realesrgan":
     # Optimizer parameter
     model_lr = 1e-4
     model_betas = (0.9, 0.99)
-    model_weight_decay = 0.999
+    ema_model_weight_decay = 0.999
 
     # LR scheduler parameter
     lr_scheduler_milestones = [int(epochs * 0.125), int(epochs * 0.250), int(epochs * 0.500), int(epochs * 0.750)]
