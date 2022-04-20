@@ -86,7 +86,7 @@ def main():
     scaler = amp.GradScaler()
 
     # Create an Exponential Moving Average Model
-    ema_model = EMA(model, config.model_weight_decay)
+    ema_model = EMA(model, config.ema_model_weight_decay)
     ema_model.register()
 
     for epoch in range(config.start_epoch, config.epochs):
@@ -103,7 +103,7 @@ def main():
         best_psnr = max(psnr, best_psnr)
         torch.save({"epoch": epoch + 1,
                     "best_psnr": best_psnr,
-                    "state_dict": model.state_dict(),
+                    "state_dict": ema_model.state_dict(),
                     "optimizer": optimizer.state_dict(),
                     "scheduler": scheduler.state_dict()},
                    os.path.join(samples_dir, f"g_epoch_{epoch + 1}.pth.tar"))
@@ -221,7 +221,7 @@ def train(model, ema_model,
         kernel2 = batch_data["kernel2"].to(config.device, non_blocking=True)
         sinc_kernel = batch_data["sinc_kernel"].to(config.device, non_blocking=True)
 
-        # Feed data
+        # # Sharpen high-resolution images
         out = usm_sharpener(hr)
 
         # Get original image size
@@ -372,10 +372,10 @@ def train(model, ema_model,
         batch_index += 1
 
 
-def validate(model, ema_model, valid_prefetcher, psnr_criterion, epoch, writer, mode) -> float:
+def validate(model, ema_model, data_prefetcher, psnr_criterion, epoch, writer, mode) -> float:
     batch_time = AverageMeter("Time", ":6.3f")
     psnres = AverageMeter("PSNR", ":4.2f")
-    progress = ProgressMeter(len(valid_prefetcher), [batch_time, psnres], prefix=f"{mode}: ")
+    progress = ProgressMeter(len(data_prefetcher), [batch_time, psnres], prefix=f"{mode}: ")
 
     # Restore the model before the EMA
     ema_model.apply_shadow()
@@ -388,8 +388,8 @@ def validate(model, ema_model, valid_prefetcher, psnr_criterion, epoch, writer, 
     end = time.time()
     with torch.no_grad():
         # enable preload
-        valid_prefetcher.reset()
-        batch_data = valid_prefetcher.next()
+        data_prefetcher.reset()
+        batch_data = data_prefetcher.next()
 
         while batch_data is not None:
             # measure data loading time
@@ -424,7 +424,7 @@ def validate(model, ema_model, valid_prefetcher, psnr_criterion, epoch, writer, 
                 progress.display(batch_index)
 
             # Preload the next batch of data
-            batch_data = valid_prefetcher.next()
+            batch_data = data_prefetcher.next()
 
             # After a batch of data is calculated, add 1 to the number of batches
             batch_index += 1

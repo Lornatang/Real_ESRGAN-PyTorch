@@ -13,6 +13,7 @@
 # ==============================================================================
 """File description: Train the ESRGAN model."""
 import os
+import random
 import shutil
 import time
 from enum import Enum
@@ -22,6 +23,7 @@ import torch
 from torch import nn
 from torch import optim
 from torch.cuda import amp
+from torch.nn import functional as F
 from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -29,7 +31,7 @@ from torch.utils.tensorboard import SummaryWriter
 import config
 import imgproc
 from dataset import CUDAPrefetcher, TrainValidImageDataset, TestImageDataset
-from model import Discriminator, Generator, ContentLoss
+from model import Generator, Discriminator, EMA, ContentLoss
 
 
 def main():
@@ -110,9 +112,14 @@ def main():
     # Initialize the gradient scaler.
     scaler = amp.GradScaler()
 
+    # Create an Exponential Moving Average Model
+    ema_model = EMA(generator, config.ema_model_weight_decay)
+    ema_model.register()
+
     for epoch in range(config.start_epoch, config.epochs):
         train(discriminator,
               generator,
+              ema_model,
               train_prefetcher,
               psnr_criterion,
               pixel_criterion,
@@ -123,8 +130,8 @@ def main():
               epoch,
               scaler,
               writer)
-        _ = validate(generator, valid_prefetcher, psnr_criterion, epoch, writer, "Valid")
-        psnr = validate(generator, test_prefetcher, psnr_criterion, epoch, writer, "Test")
+        _ = validate(generator, ema_model, valid_prefetcher, psnr_criterion, epoch, writer, "Valid")
+        psnr = validate(generator, ema_model, test_prefetcher, psnr_criterion, epoch, writer, "Test")
         print("\n")
 
         # Update LR
@@ -142,7 +149,7 @@ def main():
                    os.path.join(samples_dir, f"d_epoch_{epoch + 1}.pth.tar"))
         torch.save({"epoch": epoch + 1,
                     "best_psnr": best_psnr,
-                    "state_dict": generator.state_dict(),
+                    "state_dict": ema_model.state_dict(),
                     "optimizer": g_optimizer.state_dict(),
                     "scheduler": g_scheduler.state_dict()},
                    os.path.join(samples_dir, f"g_epoch_{epoch + 1}.pth.tar"))
@@ -239,6 +246,7 @@ def define_scheduler(d_optimizer: optim.Adam, g_optimizer: optim.Adam) -> [lr_sc
 
 def train(discriminator,
           generator,
+          ema_model,
           train_prefetcher,
           psnr_criterion,
           pixel_criterion,
@@ -249,6 +257,10 @@ def train(discriminator,
           epoch,
           scaler,
           writer) -> None:
+    # Defining JPEG image manipulation methods
+    jpeg_operation = imgproc.DiffJPEG(differentiable=False).to(config.device, non_blocking=True)
+    # Define image sharpening method
+    usm_sharpener = imgproc.USMSharp().to(config.device, non_blocking=True)
     # Calculate how many iterations there are under epoch
     batches = len(train_prefetcher)
 
@@ -282,16 +294,151 @@ def train(discriminator,
         # measure data loading time
         data_time.update(time.time() - end)
 
-        # Send data to designated device
-        lr = batch_data["lr"].to(config.device, non_blocking=True)
         hr = batch_data["hr"].to(config.device, non_blocking=True)
+        kernel1 = batch_data["kernel1"].to(config.device, non_blocking=True)
+        kernel2 = batch_data["kernel2"].to(config.device, non_blocking=True)
+        sinc_kernel = batch_data["sinc_kernel"].to(config.device, non_blocking=True)
+
+        # Sharpen high-resolution images
+        out = usm_sharpener(hr)
+
+        # Get original image size
+        image_height, image_width = out.size()[2:4]
+
+        # First degradation process
+        # Gaussian blur
+        if np.random.uniform() <= config.degradation_process_parameters_dict["first_blur_probability"]:
+            out = imgproc.blur(out, kernel1)
+
+        # Resize
+        updown_type = random.choices(["up", "down", "keep"],
+                                     config.degradation_process_parameters_dict["resize_probability1"])[0]
+        if updown_type == "up":
+            scale = np.random.uniform(1, config.degradation_process_parameters_dict["resize_range1"][1])
+        elif updown_type == "down":
+            scale = np.random.uniform(config.degradation_process_parameters_dict["resize_range1"][0], 1)
+        else:
+            scale = 1
+        mode = random.choice(["area", "bilinear", "bicubic"])
+        out = F.interpolate(out, scale_factor=scale, mode=mode)
+
+        # Noise
+        if np.random.uniform() < config.degradation_process_parameters_dict["gaussian_noise_probability1"]:
+            out = imgproc.random_add_gaussian_noise_pt(
+                image=out,
+                sigma_range=config.degradation_process_parameters_dict["noise_range1"],
+                clip=True,
+                rounds=False,
+                gray_prob=config.degradation_process_parameters_dict["gray_noise_probability1"])
+        else:
+            out = imgproc.random_add_poisson_noise_pt(
+                image=out,
+                scale_range=config.degradation_process_parameters_dict["poisson_scale_range1"],
+                gray_prob=config.degradation_process_parameters_dict["gray_noise_probability1"],
+                clip=True,
+                rounds=False)
+
+        # JPEG
+        quality = out.new_zeros(out.size(0)).uniform_(*config.degradation_process_parameters_dict["jpeg_range1"])
+        out = torch.clamp(out, 0, 1)  # clamp to [0, 1], otherwise JPEGer will result in unpleasant artifacts
+        out = jpeg_operation(out, quality=quality)
+
+        # Second degradation process
+        # Gaussian blur
+        if np.random.uniform() < config.degradation_process_parameters_dict["second_blur_probability"]:
+            out = imgproc.blur(out, kernel2)
+
+        # Resize
+        updown_type = random.choices(["up", "down", "keep"],
+                                     config.degradation_process_parameters_dict["resize_probability2"])[0]
+        if updown_type == "up":
+            scale = np.random.uniform(1, config.degradation_process_parameters_dict["resize_range2"][1])
+        elif updown_type == "down":
+            scale = np.random.uniform(config.degradation_process_parameters_dict["resize_range2"][0], 1)
+        else:
+            scale = 1
+        mode = random.choice(["area", "bilinear", "bicubic"])
+        out = F.interpolate(out,
+                            size=(int(image_height / config.upscale_factor * scale),
+                                  int(image_width / config.upscale_factor * scale)),
+                            mode=mode)
+
+        # Noise
+        if np.random.uniform() < config.degradation_process_parameters_dict["gaussian_noise_probability2"]:
+            out = imgproc.random_add_gaussian_noise_pt(
+                image=out,
+                sigma_range=config.degradation_process_parameters_dict["noise_range2"],
+                clip=True,
+                rounds=False,
+                gray_prob=config.degradation_process_parameters_dict["gray_noise_probability2"])
+        else:
+            out = imgproc.random_add_poisson_noise_pt(
+                image=out,
+                scale_range=config.degradation_process_parameters_dict["poisson_scale_range2"],
+                gray_prob=config.degradation_process_parameters_dict["gray_noise_probability2"],
+                clip=True,
+                rounds=False)
+
+        if np.random.uniform() < 0.5:
+            # Resize
+            out = F.interpolate(out,
+                                size=(image_height // config.upscale_factor, image_width // config.upscale_factor),
+                                mode=random.choice(["area", "bilinear", "bicubic"]))
+            # Sinc blur
+            out = imgproc.blur(out, sinc_kernel)
+
+            # JPEG
+            quality = out.new_zeros(out.size(0)).uniform_(*config.degradation_process_parameters_dict["jpeg_range2"])
+            out = torch.clamp(out, 0, 1)
+            out = jpeg_operation(out, quality=quality)
+        else:
+            # JPEG
+            quality = out.new_zeros(out.size(0)).uniform_(*config.degradation_process_parameters_dict["jpeg_range2"])
+            out = torch.clamp(out, 0, 1)
+            out = jpeg_operation(out, quality=quality)
+
+            # Resize
+            out = F.interpolate(out,
+                                size=(image_height // config.upscale_factor, image_width // config.upscale_factor),
+                                mode=random.choice(["area", "bilinear", "bicubic"]))
+
+            # Sinc blur
+            out = imgproc.blur(out, sinc_kernel)
+
+        # Clamp and round
+        lr = torch.clamp((out * 255.0).round(), 0, 255) / 255.
+
+        # LR and HR crop the specified area respectively
+        lr, hr = imgproc.random_crop(lr, hr, config.image_size, config.upscale_factor)
 
         # Set the real sample label to 1, and the false sample label to 0
         real_label = torch.full([lr.size(0), 1], 1.0, dtype=lr.dtype, device=config.device)
         fake_label = torch.full([lr.size(0), 1], 0.0, dtype=lr.dtype, device=config.device)
 
+        # Start training generator
+        # At this stage, the discriminator no needs to require a derivative gradient
+        for p in discriminator.parameters():
+            p.requires_grad = False
+
+        # Initialize the generator optimizer gradient
+        g_optimizer.zero_grad()
+
         # Use generators to create super-resolution images
         sr = generator(lr)
+
+        # Calculate the loss of the generator on the super-resolution image
+        with amp.autocast():
+            pixel_loss = config.pixel_weight * pixel_criterion(usm_sharpener(sr), hr)
+            content_loss = torch.sum(torch.multiply(config.content_weight, content_criterion(usm_sharpener(sr), hr)))
+            adversarial_loss = config.adversarial_weight * adversarial_criterion(discriminator(sr), real_label)
+        # Count discriminator total loss
+        g_loss = pixel_loss + content_loss + adversarial_loss
+        # Gradient zoom
+        scaler.scale(g_loss).backward()
+        # Update generator parameters
+        scaler.step(g_optimizer)
+        scaler.update()
+        # End training generator
 
         # Start training discriminator
         # At this stage, the discriminator needs to require a derivative gradient
@@ -303,14 +450,14 @@ def train(discriminator,
 
         # Calculate the loss of the discriminator on the high-resolution image
         with amp.autocast():
-            hr_output = discriminator(hr)
+            hr_output = discriminator(hr.detach())
             d_loss_hr = adversarial_criterion(hr_output, real_label)
         # Gradient zoom
         scaler.scale(d_loss_hr).backward()
 
         # Calculate the loss of the discriminator on the super-resolution image.
         with amp.autocast():
-            sr_output = discriminator(sr.detach())
+            sr_output = discriminator(sr.detach().clone())
             d_loss_sr = adversarial_criterion(sr_output, fake_label)
         # Gradient zoom
         scaler.scale(d_loss_sr).backward()
@@ -318,33 +465,12 @@ def train(discriminator,
         scaler.step(d_optimizer)
         scaler.update()
 
+        # Update EMA
+        ema_model.update()
+
         # Count discriminator total loss
         d_loss = d_loss_hr + d_loss_sr
         # End training discriminator
-
-        # Start training generator
-        # At this stage, the discriminator no needs to require a derivative gradient
-        for p in discriminator.parameters():
-            p.requires_grad = False
-
-        # Initialize the generator optimizer gradient
-        g_optimizer.zero_grad()
-
-        # Calculate the loss of the generator on the super-resolution image
-        with amp.autocast():
-            output = discriminator(sr)
-            pixel_loss = config.pixel_weight * pixel_criterion(sr, hr.detach())
-            content_loss = torch.sum(torch.multiply(config.content_weight, content_criterion(sr, hr.detach())))
-            adversarial_loss = config.adversarial_weight * adversarial_criterion(output, real_label)
-        # Count discriminator total loss
-        g_loss = pixel_loss + content_loss + adversarial_loss
-        # Gradient zoom
-        scaler.scale(g_loss).backward()
-        # Update generator parameters
-        scaler.step(g_optimizer)
-        scaler.update()
-
-        # End training generator
 
         # Calculate the scores of the two images on the discriminator
         d_hr_probability = torch.sigmoid(torch.mean(hr_output))
@@ -383,11 +509,13 @@ def train(discriminator,
         batch_index += 1
 
 
-def validate(model, valid_prefetcher, psnr_criterion, epoch, writer, mode) -> float:
+def validate(model, ema_model, data_prefetcher, psnr_criterion, epoch, writer, mode) -> float:
     batch_time = AverageMeter("Time", ":6.3f")
     psnres = AverageMeter("PSNR", ":4.2f")
-    progress = ProgressMeter(len(valid_prefetcher), [batch_time, psnres], prefix=f"{mode}: ")
+    progress = ProgressMeter(len(data_prefetcher), [batch_time, psnres], prefix=f"{mode}: ")
 
+    # Restore the model before the EMA
+    ema_model.apply_shadow()
     # Put the model in verification mode
     model.eval()
 
@@ -397,8 +525,8 @@ def validate(model, valid_prefetcher, psnr_criterion, epoch, writer, mode) -> fl
     end = time.time()
     with torch.no_grad():
         # enable preload
-        valid_prefetcher.reset()
-        batch_data = valid_prefetcher.next()
+        data_prefetcher.reset()
+        batch_data = data_prefetcher.next()
 
         while batch_data is not None:
             # measure data loading time
@@ -433,10 +561,13 @@ def validate(model, valid_prefetcher, psnr_criterion, epoch, writer, mode) -> fl
                 progress.display(batch_index)
 
             # Preload the next batch of data
-            batch_data = valid_prefetcher.next()
+            batch_data = data_prefetcher.next()
 
             # After a batch of data is calculated, add 1 to the number of batches
             batch_index += 1
+
+    # Restoring the EMA model
+    ema_model.restore()
 
     # Print average PSNR metrics
     progress.display_summary()
