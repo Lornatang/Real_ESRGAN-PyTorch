@@ -26,7 +26,8 @@ from model import Generator
 
 def main() -> None:
     # Initialize the super-resolution model
-    model = Generator().to(device=config.device, memory_format=torch.channels_last)
+    model = Generator(config.in_channels, config.out_channels, config.upscale_factor)
+    model = model.to(device=config.device, memory_format=torch.channels_last)
     print("Build ESRGAN model successfully.")
 
     # Load the super-resolution model weights
