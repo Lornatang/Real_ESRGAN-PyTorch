@@ -250,7 +250,7 @@ class CPUPrefetcher:
             and provides an iterable over the given dataset.
     """
 
-    def __init__(self, dataloader) -> None:
+    def __init__(self, dataloader: DataLoader) -> None:
         self.original_dataloader = dataloader
         self.data = iter(dataloader)
 
@@ -276,7 +276,7 @@ class CUDAPrefetcher:
         device (torch.device): Specify running device.
     """
 
-    def __init__(self, dataloader, device: torch.device):
+    def __init__(self, dataloader: DataLoader, device: torch.device):
         self.batch_data = None
         self.original_dataloader = dataloader
         self.device = device

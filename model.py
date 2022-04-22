@@ -291,21 +291,23 @@ class ContentLoss(nn.Module):
 
      """
 
-    def __init__(self, feature_extractor_nodes: list, normalize_mean: list, normalize_std: list) -> None:
+    def __init__(self, feature_model_extractor_nodes: list,
+                 feature_model_normalize_mean: list,
+                 feature_model_normalize_std: list) -> None:
         super(ContentLoss, self).__init__()
         # Get the name of the specified feature extraction node
-        self.feature_extractor_nodes = feature_extractor_nodes
+        self.feature_model_extractor_nodes = feature_model_extractor_nodes
         # Load the VGG19 model trained on the ImageNet dataset.
         model = models.vgg19(True)
         # Extract the thirty-sixth layer output in the VGG19 model as the content loss.
-        self.feature_extractor = create_feature_extractor(model, feature_extractor_nodes)
+        self.feature_extractor = create_feature_extractor(model, feature_model_extractor_nodes)
 
         # set to validation mode
         self.feature_extractor.eval()
 
         # The preprocessing method of the input data.
         # This is the VGG model preprocessing method of the ImageNet dataset.
-        self.normalize = transforms.Normalize(normalize_mean, normalize_std)
+        self.normalize = transforms.Normalize(feature_model_normalize_mean, feature_model_normalize_std)
 
         # Freeze model parameters.
         for model_parameters in self.feature_extractor.parameters():
@@ -321,13 +323,13 @@ class ContentLoss(nn.Module):
         hr_features = self.feature_extractor(hr_tensor)
 
         # Find the feature map difference between the two images
-        feature_loss1 = F.l1_loss(sr_features[self.feature_extractor_nodes[0]],
-                                  hr_features[self.feature_extractor_nodes[0]])
-        feature_loss2 = F.l1_loss(sr_features[self.feature_extractor_nodes[1]],
-                                  hr_features[self.feature_extractor_nodes[1]])
-        feature_loss3 = F.l1_loss(sr_features[self.feature_extractor_nodes[2]],
-                                  hr_features[self.feature_extractor_nodes[2]])
-        feature_loss4 = F.l1_loss(sr_features[self.feature_extractor_nodes[3]],
-                                  hr_features[self.feature_extractor_nodes[3]])
+        content_loss1 = F.l1_loss(sr_features[self.feature_model_extractor_nodes[0]],
+                                  hr_features[self.feature_model_extractor_nodes[0]])
+        content_loss2 = F.l1_loss(sr_features[self.feature_model_extractor_nodes[1]],
+                                  hr_features[self.feature_model_extractor_nodes[1]])
+        content_loss3 = F.l1_loss(sr_features[self.feature_model_extractor_nodes[2]],
+                                  hr_features[self.feature_model_extractor_nodes[2]])
+        content_loss4 = F.l1_loss(sr_features[self.feature_model_extractor_nodes[3]],
+                                  hr_features[self.feature_model_extractor_nodes[3]])
 
-        return feature_loss1, feature_loss2, feature_loss3, feature_loss4
+        return content_loss1, content_loss2, content_loss3, content_loss4

@@ -26,13 +26,13 @@ from model import Generator
 
 def main() -> None:
     # Initialize the super-resolution model
-    model = Generator(config.in_channels, config.out_channels, config.upscale_factor).to(config.device)
-    print("Build RealESRGAN model successfully.")
+    model = Generator().to(device=config.device, memory_format=torch.channels_last)
+    print("Build ESRGAN model successfully.")
 
     # Load the super-resolution model weights
     checkpoint = torch.load(config.model_path, map_location=lambda storage, loc: storage)
     model.load_state_dict(checkpoint["state_dict"])
-    print(f"Load RealESRGAN model weights `{os.path.abspath(config.model_path)}` successfully.")
+    print(f"Load ESRGAN model weights `{os.path.abspath(config.model_path)}` successfully.")
 
     # Create a folder of super-resolution experiment results
     results_dir = os.path.join("results", "test", config.exp_name)
@@ -48,7 +48,7 @@ def main() -> None:
     total_psnr = 0.0
 
     # Get a list of test image file names.
-    file_names = natsorted(os.listdir(config.hr_dir))
+    file_names = natsorted(os.listdir(config.lr_dir))
     # Get the number of test image files.
     total_files = len(file_names)
 
@@ -69,8 +69,12 @@ def main() -> None:
         lr_image = cv2.cvtColor(lr_image, cv2.COLOR_BGR2RGB)
 
         # Convert Y image data convert to Y tensor data
-        lr_tensor = imgproc.image2tensor(lr_image, range_norm=False, half=True).to(config.device).unsqueeze_(0)
-        hr_y_tensor = imgproc.image2tensor(hr_y_image, range_norm=False, half=True).to(config.device).unsqueeze_(0)
+        lr_tensor = imgproc.image2tensor(lr_image, range_norm=False, half=True).unsqueeze_(0)
+        hr_y_tensor = imgproc.image2tensor(hr_y_image, range_norm=False, half=True).unsqueeze_(0)
+
+        # Copy to CUDA
+        lr_tensor = lr_tensor.to(device=config.device, memory_format=torch.channels_last, non_blocking=True)
+        hr_y_tensor = hr_y_tensor.to(device=config.device, memory_format=torch.channels_last, non_blocking=True)
 
         # Only reconstruct the Y channel image data.
         with torch.no_grad():
@@ -84,9 +88,12 @@ def main() -> None:
         # Cal PSNR
         sr_image = sr_image.astype(np.float32) / 255.
         sr_y_image = imgproc.bgr2ycbcr(sr_image, use_y_channel=True)
-        sr_y_tensor = imgproc.image2tensor(sr_y_image, range_norm=False, half=True).to(config.device).unsqueeze_(0)
+        sr_y_tensor = imgproc.image2tensor(sr_y_image, range_norm=False, half=True).unsqueeze_(0)
 
-        total_psnr += 10. * torch.log10(1. / torch.mean((sr_y_tensor - hr_y_tensor) ** 2))
+        # Copy to CUDA
+        sr_y_tensor = sr_y_tensor.to(device=config.device, memory_format=torch.channels_last, non_blocking=True)
+
+        total_psnr += 10. * torch.log10_(1. / torch.mean((sr_y_tensor - hr_y_tensor) ** 2))
 
     print(f"PSNR: {total_psnr / total_files:4.2f}dB.\n")
 
