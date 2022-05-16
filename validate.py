@@ -20,7 +20,7 @@ from natsort import natsorted
 
 import config
 import imgproc
-from image_quality_assessment import PSNR, SSIM
+from image_quality_assessment import NIQE
 from model import Generator
 
 
@@ -45,16 +45,13 @@ def main() -> None:
     model.half()
 
     # Initialize the sharpness evaluation function
-    psnr = PSNR(config.upscale_factor, config.only_test_y_channel)
-    ssim = SSIM(config.upscale_factor, config.only_test_y_channel)
+    niqe = NIQE(config.upscale_factor, os.path.join("results", "pretrained_models", "niqe_model.mat"))
 
     # Set the sharpness evaluation function calculation device to the specified model
-    psnr = psnr.to(device=config.device, memory_format=torch.channels_last, non_blocking=True)
-    ssim = ssim.to(device=config.device, memory_format=torch.channels_last, non_blocking=True)
+    niqe = niqe.to(device=config.device, memory_format=torch.channels_last, non_blocking=True)
 
     # Initialize IQA metrics
-    psnr_metrics = 0.0
-    ssim_metrics = 0.0
+    niqe_metrics = 0.0
 
     # Get a list of test image file names.
     file_names = natsorted(os.listdir(config.lr_dir))
@@ -64,24 +61,19 @@ def main() -> None:
     for index in range(total_files):
         lr_image_path = os.path.join(config.lr_dir, file_names[index])
         sr_image_path = os.path.join(config.sr_dir, file_names[index])
-        hr_image_path = os.path.join(config.hr_dir, file_names[index])
 
         print(f"Processing `{os.path.abspath(lr_image_path)}`...")
-        # Read LR image and HR image
+        # Read LR image
         lr_image = cv2.imread(lr_image_path, cv2.IMREAD_UNCHANGED)
-        hr_image = cv2.imread(hr_image_path, cv2.IMREAD_UNCHANGED)
 
         # Convert BGR channel image format data to RGB channel image format data
         lr_image = cv2.cvtColor(lr_image, cv2.COLOR_BGR2RGB)
-        hr_image = cv2.cvtColor(hr_image, cv2.COLOR_BGR2RGB)
 
         # Convert RGB channel image format data to Tensor channel image format data
         lr_tensor = imgproc.image2tensor(lr_image, range_norm=False, half=True).unsqueeze_(0)
-        hr_tensor = imgproc.image2tensor(hr_image, range_norm=False, half=True).unsqueeze_(0)
 
         # Transfer Tensor channel image format data to CUDA device
         lr_tensor = lr_tensor.to(device=config.device, memory_format=torch.channels_last, non_blocking=True)
-        hr_tensor = hr_tensor.to(device=config.device, memory_format=torch.channels_last, non_blocking=True)
 
         # Only reconstruct the Y channel image data.
         with torch.no_grad():
@@ -93,18 +85,14 @@ def main() -> None:
         cv2.imwrite(sr_image_path, sr_image)
 
         # Cal IQA metrics
-        psnr_metrics += psnr(sr_tensor, hr_tensor).item()
-        ssim_metrics += ssim(sr_tensor, hr_tensor).item()
+        niqe_metrics += niqe(sr_tensor).item()
 
     # Calculate the average value of the sharpness evaluation index,
     # and all index range values are cut according to the following values
-    # PSNR range value is 0~100
-    # SSIM range value is 0~1
-    avg_ssim = 1 if ssim_metrics / total_files > 1 else ssim_metrics / total_files
-    avg_psnr = 100 if psnr_metrics / total_files > 100 else psnr_metrics / total_files
+    # NIQE range value is 0~100
+    avg_niqe = 100 if niqe_metrics / total_files > 100 else niqe_metrics / total_files
 
-    print(f"PSNR: {avg_psnr:4.2f} dB\n"
-          f"SSIM: {avg_ssim:4.4f} u")
+    print(f"NIQE: {avg_niqe:4.2f} u")
 
 
 if __name__ == "__main__":

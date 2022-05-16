@@ -28,8 +28,8 @@ from torchvision.transforms.functional_tensor import rgb_to_grayscale
 
 __all__ = [
     "image2tensor", "tensor2image",
-    ""
-    "rgb2ycbcr", "bgr2ycbcr", "ycbcr2bgr", "ycbcr2rgb",
+    "image_resize",
+    "expand_y", "rgb2ycbcr", "bgr2ycbcr", "ycbcr2bgr", "ycbcr2rgb",
     "center_crop", "random_crop", "random_rotate", "random_horizontally_flip", "random_vertically_flip",
 ]
 
@@ -1614,19 +1614,45 @@ def image_resize(image: Any, scale_factor: float, antialiasing: bool = True) -> 
     return out_2
 
 
+def expand_y(image: np.ndarray) -> np.ndarray:
+    """Convert BGR channel to YCbCr format,
+    and expand Y channel data in YCbCr, from HW to HWC
+
+    Args:
+        image (np.ndarray): Y channel image data
+
+    Returns:
+        y_image (np.ndarray): Y-channel image data in HWC form
+
+    """
+    # Normalize image data to [0, 1]
+    image = image.astype(np.float32) / 255.
+
+    # Convert BGR to YCbCr, and extract only Y channel
+    y_image = bgr2ycbcr(image, only_use_y_channel=True)
+
+    # Expand Y channel
+    y_image = y_image[..., None]
+
+    # Normalize the image data to [0, 255]
+    y_image = y_image.astype(np.float64) * 255.0
+
+    return y_image
+
+
 # Code reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/utils/matlab_functions.py`
-def rgb2ycbcr(image: np.ndarray, use_y_channel: bool = False) -> np.ndarray:
-    """Implementation of rgb2ycbcr function in Matlab under Python language.
+def rgb2ycbcr(image: np.ndarray, only_use_y_channel: bool) -> np.ndarray:
+    """Implementation of rgb2ycbcr function in Matlab under Python language
 
     Args:
         image (np.ndarray): Image input in RGB format.
-        use_y_channel (bool): Extract Y channel separately. Default: ``False``.
+        only_use_y_channel (bool): Extract Y channel separately
 
     Returns:
-        ndarray: YCbCr image array data.
-    """
+        image (np.ndarray): YCbCr image array data
 
-    if use_y_channel:
+    """
+    if only_use_y_channel:
         image = np.dot(image, [65.481, 128.553, 24.966]) + 16.0
     else:
         image = np.matmul(image, [[65.481, -37.797, 112.0], [128.553, -74.203, -93.786], [24.966, 112.0, -18.214]]) + [
@@ -1639,18 +1665,18 @@ def rgb2ycbcr(image: np.ndarray, use_y_channel: bool = False) -> np.ndarray:
 
 
 # Code reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/utils/matlab_functions.py`
-def bgr2ycbcr(image: np.ndarray, use_y_channel: bool = False) -> np.ndarray:
+def bgr2ycbcr(image: np.ndarray, only_use_y_channel: bool) -> np.ndarray:
     """Implementation of bgr2ycbcr function in Matlab under Python language.
 
     Args:
-        image (np.ndarray): Image input in BGR format.
-        use_y_channel (bool): Extract Y channel separately. Default: ``False``.
+        image (np.ndarray): Image input in BGR format
+        only_use_y_channel (bool): Extract Y channel separately
 
     Returns:
-        ndarray: YCbCr image array data.
-    """
+        image (np.ndarray): YCbCr image array data
 
-    if use_y_channel:
+    """
+    if only_use_y_channel:
         image = np.dot(image, [24.966, 128.553, 65.481]) + 16.0
     else:
         image = np.matmul(image, [[24.966, 112.0, -18.214], [128.553, -74.203, -93.786], [65.481, -37.797, 112.0]]) + [
@@ -1670,9 +1696,9 @@ def ycbcr2rgb(image: np.ndarray) -> np.ndarray:
         image (np.ndarray): Image input in YCbCr format.
 
     Returns:
-        ndarray: RGB image array data.
-    """
+        image (np.ndarray): RGB image array data
 
+    """
     image_dtype = image.dtype
     image *= 255.
 
@@ -1694,9 +1720,9 @@ def ycbcr2bgr(image: np.ndarray) -> np.ndarray:
         image (np.ndarray): Image input in YCbCr format.
 
     Returns:
-        ndarray: BGR image array data.
-    """
+        image (np.ndarray): BGR image array data
 
+    """
     image_dtype = image.dtype
     image *= 255.
 
@@ -1708,6 +1734,62 @@ def ycbcr2bgr(image: np.ndarray) -> np.ndarray:
     image = image.astype(image_dtype)
 
     return image
+
+
+def rgb2ycbcr_torch(tensor: torch.Tensor, only_use_y_channel: bool) -> torch.Tensor:
+    """Implementation of rgb2ycbcr function in Matlab under PyTorch
+
+    References from：`https://en.wikipedia.org/wiki/YCbCr#ITU-R_BT.601_conversion`
+
+    Args:
+        tensor (torch.Tensor): Image data in PyTorch format
+        only_use_y_channel (bool): Extract only Y channel
+
+    Returns:
+        tensor (torch.Tensor): YCbCr image data in PyTorch format
+
+    """
+    if only_use_y_channel:
+        weight = torch.Tensor([[65.481], [128.553], [24.966]]).to(tensor)
+        tensor = torch.matmul(tensor.permute(0, 2, 3, 1), weight).permute(0, 3, 1, 2) + 16.0
+    else:
+        weight = torch.Tensor([[65.481, -37.797, 112.0],
+                               [128.553, -74.203, -93.786],
+                               [24.966, 112.0, -18.214]]).to(tensor)
+        bias = torch.Tensor([16, 128, 128]).view(1, 3, 1, 1).to(tensor)
+        tensor = torch.matmul(tensor.permute(0, 2, 3, 1), weight).permute(0, 3, 1, 2) + bias
+
+    tensor /= 255.
+
+    return tensor
+
+
+def bgr2ycbcr_torch(tensor: torch.Tensor, only_use_y_channel: bool) -> torch.Tensor:
+    """Implementation of bgr2ycbcr function in Matlab under PyTorch
+
+    References from：`https://en.wikipedia.org/wiki/YCbCr#ITU-R_BT.601_conversion`
+
+    Args:
+        tensor (torch.Tensor): Image data in PyTorch format
+        only_use_y_channel (bool): Extract only Y channel
+
+    Returns:
+        tensor (torch.Tensor): YCbCr image data in PyTorch format
+
+    """
+    if only_use_y_channel:
+        weight = torch.Tensor([[24.966], [128.553], [65.481]]).to(tensor)
+        tensor = torch.matmul(tensor.permute(0, 2, 3, 1), weight).permute(0, 3, 1, 2) + 16.0
+    else:
+        weight = torch.Tensor([[24.966, 112.0, -18.214],
+                               [128.553, -74.203, -93.786],
+                               [65.481, -37.797, 112.0]]).to(tensor)
+        bias = torch.Tensor([16, 128, 128]).view(1, 3, 1, 1).to(tensor)
+        tensor = torch.matmul(tensor.permute(0, 2, 3, 1), weight).permute(0, 3, 1, 2) + bias
+
+    tensor /= 255.
+
+    return tensor
 
 
 def center_crop(image: np.ndarray, image_size: int) -> np.ndarray:
