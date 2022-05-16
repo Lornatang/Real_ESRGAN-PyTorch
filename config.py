@@ -69,6 +69,8 @@ np.random.seed(0)
 device = torch.device("cuda", 0)
 # Turning on when the image size does not change during training can speed up training
 cudnn.benchmark = True
+# When evaluating the performance of the SR model, whether to verify only the Y channel image data
+only_test_y_channel = True
 # Model Architecture Parameters
 in_channels = 3
 out_channels = 3
@@ -101,11 +103,12 @@ if mode == "train_realesrnet":
     model_betas = (0.9, 0.99)
     ema_model_weight_decay = 0.999
 
-    # LR scheduler
+    # Dynamically adjust the learning rate policy
     lr_scheduler_step_size = epochs // 5
     lr_scheduler_gamma = 0.5
 
-    print_frequency = 100
+    # How many iterations to print the training result
+    print_frequency = 200
 
 if mode == "train_realesrgan":
     # Dataset address
@@ -142,11 +145,12 @@ if mode == "train_realesrgan":
     model_betas = (0.9, 0.99)
     ema_model_weight_decay = 0.999
 
-    # LR scheduler parameter
+    # Dynamically adjust the learning rate policy
     lr_scheduler_milestones = [int(epochs * 0.125), int(epochs * 0.250), int(epochs * 0.500), int(epochs * 0.750)]
     lr_scheduler_gamma = 0.5
 
-    print_frequency = 100
+    # How many iterations to print the training result
+    print_frequency = 200
 
 if mode == "valid":
     # Test data address

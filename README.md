@@ -36,30 +36,30 @@ Contains DIV2K, DIV8K, Flickr2K, OST, T91, Set5, Set14, BSDS100 and BSDS200, etc
 
 Modify the contents of the `config.py` file as follows.
 
-- line 77: `upscale_factor` change to the magnification you need to enlarge.
-- line 79: `mode` change Set to valid mode.
-- line 157: `model_path` change weight address after training.
+- line 79: `upscale_factor` change to the magnification you need to enlarge.
+- line 81: `mode` change Set to valid mode.
+- line 161: `model_path` change weight address after training.
 
 ## Train
 
 Modify the contents of the `config.py` file as follows.
 
-- line 77: `upscale_factor` change to the magnification you need to enlarge.
-- line 79: `mode` change set to train mode.
+- line 79: `upscale_factor` change to the magnification you need to enlarge.
+- line 81: `mode` change set to train mode.
 
 If you want to load weights that you've trained before, modify the contents of the file as follows.
 
 ### Train RealESRNet model
 
-- line 93: `start_epoch` change number of RealRRDBNet training iterations in the previous round.
-- line 94: `resume` change to RealRRDBNet weight address that needs to be loaded.
+- line 95: `start_epoch` change number of RealRRDBNet training iterations in the previous round.
+- line 96: `resume` change to RealRRDBNet weight address that needs to be loaded.
 
 ### Train RealESRGAN model
 
-- line 122: `start_epoch` change number of Real_ESRGAN training iterations in the previous round.
-- line 123: `resume` change to Real_RRDBNet weight address that needs to be loaded.
-- line 124: `resume_d` change to Discriminator weight address that needs to be loaded.
-- line 125: `resume_g` change to Generator weight address that needs to be loaded.
+- line 125: `start_epoch` change number of Real_ESRGAN training iterations in the previous round.
+- line 126: `resume` change to Real_RRDBNet weight address that needs to be loaded.
+- line 127: `resume_d` change to Discriminator weight address that needs to be loaded.
+- line 128: `resume_g` change to Generator weight address that needs to be loaded.
 
 ### Result
 

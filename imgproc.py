@@ -28,31 +28,36 @@ from torchvision.transforms.functional_tensor import rgb_to_grayscale
 
 __all__ = [
     "image2tensor", "tensor2image",
+    ""
     "rgb2ycbcr", "bgr2ycbcr", "ycbcr2bgr", "ycbcr2rgb",
     "center_crop", "random_crop", "random_rotate", "random_horizontally_flip", "random_vertically_flip",
 ]
 
 
 def image2tensor(image: np.ndarray, range_norm: bool, half: bool) -> torch.Tensor:
-    """Convert ``PIL.Image`` to Tensor.
+    """Convert the image data type to the Tensor (NCWH) data type supported by PyTorch
 
     Args:
-        image (np.ndarray): The image data read by ``PIL.Image``
+        image (np.ndarray): The image data read by ``OpenCV.imread``, the data range is [0,255] or [0, 1]
         range_norm (bool): Scale [0, 1] data to between [-1, 1]
         half (bool): Whether to convert torch.float32 similarly to torch.half type
 
     Returns:
-        torch.Tensor: Convert to a data format executable by PyTorch
+        tensor (torch.Tensor): Data types supported by PyTorch
 
     Examples:
-        >>> image = cv2.imread("image.bmp", cv2.IMREAD_UNCHANGED).astype(np.float32) / 255.
-        >>> tensor_image = image2tensor(image, range_norm=False, half=False)
-    """
+        >>> example_image = cv2.imread("lr_image.bmp")
+        >>> example_tensor = image2tensor(example_image, range_norm=True, half=False)
 
+    """
+    # Convert image data type to Tensor data type
     tensor = F_vision.to_tensor(image)
 
+    # Scale the image data from [0, 1] to [-1, 1]
     if range_norm:
-        tensor = tensor.mul_(2.0).sub_(1.0)
+        tensor = tensor.mul(2.0).sub(1.0)
+
+    # Convert torch.float32 image data type to torch.half image data type
     if half:
         tensor = tensor.half()
 
@@ -60,33 +65,32 @@ def image2tensor(image: np.ndarray, range_norm: bool, half: bool) -> torch.Tenso
 
 
 def tensor2image(tensor: torch.Tensor, range_norm: bool, half: bool) -> Any:
-    """Converts ``torch.Tensor`` to ``PIL.Image``.
+    """Convert the Tensor(NCWH) data type supported by PyTorch to the np.ndarray(WHC) image data type
 
     Args:
-        tensor (torch.Tensor): The image that needs to be converted to ``PIL.Image``
+        tensor (torch.Tensor): Data types supported by PyTorch (NCHW), the data range is [0, 1]
         range_norm (bool): Scale [-1, 1] data to between [0, 1]
-        half (bool): Whether to convert torch.float32 similarly to torch.half type
+        half (bool): Whether to convert torch.float32 similarly to torch.half type.
 
     Returns:
-        np.ndarray: Convert image data to support PIL library
+        image (np.ndarray): Data types supported by PIL or OpenCV
 
     Examples:
-        >>> tensor = torch.randn([1, 3, 128, 128])
-        >>> image = tensor2image(tensor, range_norm=False, half=False)
-    """
+        >>> example_image = cv2.imread("lr_image.bmp")
+        >>> example_tensor = image2tensor(example_image, range_norm=False, half=False)
 
+    """
     if range_norm:
-        tensor = tensor.add_(1.0).div_(2.0)
+        tensor = tensor.add(1.0).div(2.0)
     if half:
         tensor = tensor.half()
 
-    image = tensor.squeeze_(0).permute(1, 2, 0).mul_(255).clamp_(0, 255).cpu().numpy().astype("uint8")
+    image = tensor.squeeze(0).permute(1, 2, 0).mul(255).clamp(0, 255).cpu().numpy().astype("uint8")
 
     return image
 
 
-# Implementation reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/data/degradations.py`
-def calculate_rotate_sigma_matrix(sigma_x: float, sigma_y: float, theta: float):
+def _calculate_rotate_sigma_matrix(sigma_x: float, sigma_y: float, theta: float):
     """Calculate rotated sigma matrix.
 
     Args:
@@ -105,8 +109,7 @@ def calculate_rotate_sigma_matrix(sigma_x: float, sigma_y: float, theta: float):
     return out
 
 
-# Implementation reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/data/degradations.py`
-def mesh_grid(kernel_size: int):
+def _mesh_grid(kernel_size: int):
     """Make N-D coordinate arrays for vectorized evaluations of
     N-D scalar/vector fields over N-D grids, given
     one-dimensional coordinate arrays x1, x2,..., xn.
@@ -128,8 +131,7 @@ def mesh_grid(kernel_size: int):
     return xy, xx, yy
 
 
-# Implementation reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/data/degradations.py`
-def calculate_probability_density_function(sigma_matrix: np.ndarray, grid: np.ndarray):
+def _calculate_probability_density_function(sigma_matrix: np.ndarray, grid: np.ndarray):
     """Calculate probability density function of the bivariate Gaussian distribution.
 
     Args:
@@ -146,8 +148,7 @@ def calculate_probability_density_function(sigma_matrix: np.ndarray, grid: np.nd
     return probability_density_function
 
 
-# Implementation reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/data/degradations.py`
-def calculate_cumulative_density_function(skew_matrix: np.ndarray, grid: np.ndarray):
+def _calculate_cumulative_density_function(skew_matrix: np.ndarray, grid: np.ndarray):
     """Calculate the CDF of the standard bivariate Gaussian distribution.
         Used in skewed Gaussian distribution.
 
@@ -166,9 +167,8 @@ def calculate_cumulative_density_function(skew_matrix: np.ndarray, grid: np.ndar
     return cumulative_density_function
 
 
-# Implementation reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/data/degradations.py`
-def generate_bivariate_gaussian_kernel(kernel_size, sigma_x: float, sigma_y: float, theta: float,
-                                       grid: np.ndarray = None, isotropic: bool = True):
+def _generate_bivariate_gaussian_kernel(kernel_size, sigma_x: float, sigma_y: float, theta: float,
+                                        grid: np.ndarray = None, isotropic: bool = True):
     """Generate a bivariate isotropic or anisotropic Gaussian kernel.
     In the isotropic mode, only `sigma_x` is used. `sigma_y` and `theta` is ignored.
 
@@ -185,22 +185,21 @@ def generate_bivariate_gaussian_kernel(kernel_size, sigma_x: float, sigma_y: flo
 
     """
     if grid is None:
-        grid, _, _ = mesh_grid(kernel_size)
+        grid, _, _ = _mesh_grid(kernel_size)
     if isotropic:
         sigma_matrix = np.array([[sigma_x ** 2, 0], [0, sigma_x ** 2]])
     else:
-        sigma_matrix = calculate_rotate_sigma_matrix(sigma_x, sigma_y, theta)
+        sigma_matrix = _calculate_rotate_sigma_matrix(sigma_x, sigma_y, theta)
 
-    bivariate_gaussian_kernel = calculate_probability_density_function(sigma_matrix, grid)
+    bivariate_gaussian_kernel = _calculate_probability_density_function(sigma_matrix, grid)
     bivariate_gaussian_kernel = bivariate_gaussian_kernel / np.sum(bivariate_gaussian_kernel)
 
     return bivariate_gaussian_kernel
 
 
-# Implementation reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/data/degradations.py`
-def generate_bivariate_generalized_gaussian_kernel(kernel_size: int, sigma_x: float, sigma_y: float, theta: float,
-                                                   beta: float,
-                                                   grid: np.ndarray = None, isotropic: bool = True):
+def _generate_bivariate_generalized_gaussian_kernel(kernel_size: int, sigma_x: float, sigma_y: float, theta: float,
+                                                    beta: float,
+                                                    grid: np.ndarray = None, isotropic: bool = True):
     """Generate a bivariate generalized Gaussian kernel.
     Described in `Parameter Estimation For Multivariate Generalized Gaussian Distributions`_ by Pascal et. al (2013).
     In the isotropic mode, only `sig_x` is used. `sig_y` and `theta` is ignored.
@@ -219,11 +218,11 @@ def generate_bivariate_generalized_gaussian_kernel(kernel_size: int, sigma_x: fl
 
     """
     if grid is None:
-        grid, _, _ = mesh_grid(kernel_size)
+        grid, _, _ = _mesh_grid(kernel_size)
     if isotropic:
         sigma_matrix = np.array([[sigma_x ** 2, 0], [0, sigma_x ** 2]])
     else:
-        sigma_matrix = calculate_rotate_sigma_matrix(sigma_x, sigma_y, theta)
+        sigma_matrix = _calculate_rotate_sigma_matrix(sigma_x, sigma_y, theta)
 
     inverse_sigma = np.linalg.inv(sigma_matrix)
     bivariate_generalized_gaussian_kernel = np.exp(-0.5 * np.power(np.sum(np.dot(grid, inverse_sigma) * grid, 2), beta))
@@ -234,9 +233,9 @@ def generate_bivariate_generalized_gaussian_kernel(kernel_size: int, sigma_x: fl
 
 
 # Implementation reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/data/degradations.py`
-def generate_bivariate_plateau_gaussian_kernel(kernel_size: int, sigma_x: float, sigma_y: float, theta: float,
-                                               beta: float,
-                                               grid: np.ndarray = None, isotropic: bool = True):
+def _generate_bivariate_plateau_gaussian_kernel(kernel_size: int, sigma_x: float, sigma_y: float, theta: float,
+                                                beta: float,
+                                                grid: np.ndarray = None, isotropic: bool = True):
     """Generate a plateau-like anisotropic kernel.
     In the isotropic mode, only `sigma_x` is used. `sigma_y` and `theta` is ignored.
 
@@ -254,11 +253,11 @@ def generate_bivariate_plateau_gaussian_kernel(kernel_size: int, sigma_x: float,
 
     """
     if grid is None:
-        grid, _, _ = mesh_grid(kernel_size)
+        grid, _, _ = _mesh_grid(kernel_size)
     if isotropic:
         sigma_matrix = np.array([[sigma_x ** 2, 0], [0, sigma_x ** 2]])
     else:
-        sigma_matrix = calculate_rotate_sigma_matrix(sigma_x, sigma_y, theta)
+        sigma_matrix = _calculate_rotate_sigma_matrix(sigma_x, sigma_y, theta)
 
     inverse_sigma = np.linalg.inv(sigma_matrix)
     bivariate_plateau_gaussian_kernel = np.reciprocal(np.power(np.sum(np.dot(grid, inverse_sigma) * grid, 2), beta) + 1)
@@ -302,8 +301,8 @@ def random_bivariate_gaussian_kernel(kernel_size: int,
         sigma_y = sigma_x
         rotation = 0
 
-    bivariate_gaussian_kernel = generate_bivariate_gaussian_kernel(kernel_size, sigma_x, sigma_y, rotation,
-                                                                   isotropic=isotropic)
+    bivariate_gaussian_kernel = _generate_bivariate_gaussian_kernel(kernel_size, sigma_x, sigma_y, rotation,
+                                                                    isotropic=isotropic)
 
     # add multiplicative noise
     if noise_range is not None:
@@ -357,9 +356,9 @@ def random_bivariate_generalized_gaussian_kernel(kernel_size: int,
     else:
         beta = np.random.uniform(1, beta_range[1])
 
-    bivariate_generalized_gaussian_kernel = generate_bivariate_generalized_gaussian_kernel(kernel_size, sigma_x,
-                                                                                           sigma_y, rotation, beta,
-                                                                                           isotropic=isotropic)
+    bivariate_generalized_gaussian_kernel = _generate_bivariate_generalized_gaussian_kernel(kernel_size, sigma_x,
+                                                                                            sigma_y, rotation, beta,
+                                                                                            isotropic=isotropic)
 
     # add multiplicative noise
     if noise_range is not None:
@@ -416,8 +415,8 @@ def random_bivariate_plateau_gaussian_kernel(kernel_size: int,
     else:
         beta = np.random.uniform(1, beta_range[1])
 
-    bivariate_plateau_gaussian_kernel = generate_bivariate_plateau_gaussian_kernel(kernel_size, sigma_x, sigma_y,
-                                                                                   rotation, beta, isotropic=isotropic)
+    bivariate_plateau_gaussian_kernel = _generate_bivariate_plateau_gaussian_kernel(kernel_size, sigma_x, sigma_y,
+                                                                                    rotation, beta, isotropic=isotropic)
     # add multiplicative noise
     if noise_range is not None:
         assert noise_range[0] < noise_range[1], 'Wrong noise range.'
@@ -1437,7 +1436,7 @@ class USMSharp(torch.nn.Module):
 
 
 # Code reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/utils/matlab_functions.py`
-def cubic(x: Any):
+def _cubic(x: Any):
     """Implementation of `cubic` function in Matlab under Python language.
 
     Args:
@@ -1456,7 +1455,7 @@ def cubic(x: Any):
 
 
 # Code reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/utils/matlab_functions.py`
-def calculate_weights_indices(in_length: int, out_length: int, scale: float, kernel_width: int, antialiasing: bool):
+def _calculate_weights_indices(in_length: int, out_length: int, scale: float, kernel_width: int, antialiasing: bool):
     """Implementation of `calculate_weights_indices` function in Matlab under Python language.
 
     Args:
@@ -1502,9 +1501,9 @@ def calculate_weights_indices(in_length: int, out_length: int, scale: float, ker
 
     # apply cubic kernel
     if (scale < 1) and antialiasing:
-        weights = scale * cubic(distance_to_center * scale)
+        weights = scale * _cubic(distance_to_center * scale)
     else:
-        weights = cubic(distance_to_center)
+        weights = _cubic(distance_to_center)
 
     # Normalize the weights matrix so that each row sums to 1.
     weights_sum = torch.sum(weights, 1).view(out_length, 1)
@@ -1527,8 +1526,7 @@ def calculate_weights_indices(in_length: int, out_length: int, scale: float, ker
     return weights, indices, int(sym_len_s), int(sym_len_e)
 
 
-# Code reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/utils/matlab_functions.py`
-def imresize(image: Any, scale_factor: float, antialiasing: bool = True) -> Any:
+def image_resize(image: Any, scale_factor: float, antialiasing: bool = True) -> Any:
     """Implementation of `imresize` function in Matlab under Python language.
 
     Args:
@@ -1558,10 +1556,10 @@ def imresize(image: Any, scale_factor: float, antialiasing: bool = True) -> Any:
     kernel_width = 4
 
     # get weights and indices
-    weights_h, indices_h, sym_len_hs, sym_len_he = calculate_weights_indices(in_h, out_h, scale_factor, kernel_width,
-                                                                             antialiasing)
-    weights_w, indices_w, sym_len_ws, sym_len_we = calculate_weights_indices(in_w, out_w, scale_factor, kernel_width,
-                                                                             antialiasing)
+    weights_h, indices_h, sym_len_hs, sym_len_he = _calculate_weights_indices(in_h, out_h, scale_factor, kernel_width,
+                                                                              antialiasing)
+    weights_w, indices_w, sym_len_ws, sym_len_we = _calculate_weights_indices(in_w, out_w, scale_factor, kernel_width,
+                                                                              antialiasing)
     # process H dimension
     # symmetric copying
     img_aug = torch.FloatTensor(in_c, in_h + sym_len_hs + sym_len_he, in_w)
@@ -1776,20 +1774,22 @@ def random_crop(lr_images: torch.Tensor, hr_images: torch.Tensor,
     return patch_lr_images, patch_hr_images
 
 
-def random_rotate(image: np.ndarray, angles: list, center=None, scale_factor: float = 1.0) -> np.ndarray:
-    """Rotate an image randomly by a specified angle.
+def random_rotate(image,
+                  angles: list,
+                  center: tuple[int, int] = None,
+                  scale_factor: float = 1.0) -> np.ndarray:
+    """Rotate an image by a random angle
 
     Args:
-        image (np.ndarray): The input image for `OpenCV.imread`.
-        angles (list): Specify the rotation angle.
-        center (tuple[int]): Image rotation center. If the center is None,
-            initialize it as the center of the image. ``Default: None``.
-        scale_factor (float): scaling factor. Default: 1.0.
+        image (np.ndarray): Image read with OpenCV
+        angles (list): Rotation angle range
+        center (optional, tuple[int, int]): High resolution image selection center point. Default: ``None``
+        scale_factor (optional, float): scaling factor. Default: 1.0
 
     Returns:
-        np.ndarray: Rotated image.
-    """
+        rotated_image (np.ndarray): image after rotation
 
+    """
     image_height, image_width = image.shape[:2]
 
     if center is None:
@@ -1798,40 +1798,44 @@ def random_rotate(image: np.ndarray, angles: list, center=None, scale_factor: fl
     # Random select specific angle
     angle = random.choice(angles)
     matrix = cv2.getRotationMatrix2D(center, angle, scale_factor)
-    image = cv2.warpAffine(image, matrix, (image_width, image_height))
+    rotated_image = cv2.warpAffine(image, matrix, (image_width, image_height))
 
-    return image
-
-
-def random_horizontally_flip(image: np.ndarray, p=0.5) -> np.ndarray:
-    """Flip an image horizontally randomly.
-
-    Args:
-        image (np.ndarray): The input image for `OpenCV.imread`.
-        p (optional, float): rollover probability. (Default: 0.5)
-
-    Returns:
-        np.ndarray: Horizontally flip image.
-    """
-
-    if random.random() < p:
-        image = cv2.flip(image, 1)
-
-    return image
+    return rotated_image
 
 
-def random_vertically_flip(image: np.ndarray, p=0.5) -> np.ndarray:
-    """Flip an image vertically randomly.
+def random_horizontally_flip(image: np.ndarray, p: float = 0.5) -> np.ndarray:
+    """Flip the image upside down randomly
 
     Args:
-        image (np.ndarray): The input image for `OpenCV.imread`.
-        p (optional, float): rollover probability. (Default: 0.5)
+        image (np.ndarray): Image read with OpenCV
+        p (optional, float): Horizontally flip probability. Default: 0.5
 
     Returns:
-        np.ndarray: Vertically flip image.
+        horizontally_flip_image (np.ndarray): image after horizontally flip
+
     """
-
     if random.random() < p:
-        image = cv2.flip(image, 0)
+        horizontally_flip_image = cv2.flip(image, 1)
+    else:
+        horizontally_flip_image = image
 
-    return image
+    return horizontally_flip_image
+
+
+def random_vertically_flip(image: np.ndarray, p: float = 0.5) -> np.ndarray:
+    """Flip an image horizontally randomly
+
+    Args:
+        image (np.ndarray): Image read with OpenCV
+        p (optional, float): Vertically flip probability. Default: 0.5
+
+    Returns:
+        vertically_flip_image (np.ndarray): image after vertically flip
+
+    """
+    if random.random() < p:
+        vertically_flip_image = cv2.flip(image, 0)
+    else:
+        vertically_flip_image = image
+
+    return vertically_flip_image

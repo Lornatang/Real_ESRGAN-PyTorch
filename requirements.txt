@@ -3,5 +3,5 @@ numpy
 tqdm
 torch
 torchvision
-setuptools
+scipy
 natsort

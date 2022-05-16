@@ -141,11 +141,12 @@ class TrainValidImageDataset(Dataset):
             sinc_kernel = torch.FloatTensor(sinc_kernel)
 
             return {"hr": hr_tensor, "kernel1": kernel1, "kernel2": kernel2, "sinc_kernel": sinc_kernel}
+
         elif self.mode == "Valid":
             # Center crop image
             hr_image = imgproc.center_crop(image, self.image_size)
             # Use Bicubic kernel create LR image
-            lr_image = imgproc.imresize(hr_image, 1 / self.upscale_factor)
+            lr_image = imgproc.image_resize(hr_image, 1 / self.upscale_factor)
 
             # BGR convert to RGB
             lr_image = cv2.cvtColor(lr_image, cv2.COLOR_BGR2RGB)
