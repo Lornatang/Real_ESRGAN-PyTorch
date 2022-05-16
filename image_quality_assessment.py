@@ -821,7 +821,7 @@ def _symm_pad_torch(im: torch.Tensor, padding: [int, int, int, int]):
     return im[..., yy, xx]
 
 
-def _blockproc_torch(x, kernel, fun, border_size=None, pad_partial=False, pad_method='zero', **func_args):
+def _blockproc_torch(x, kernel, fun, border_size=None, pad_partial=False, pad_method='zero'):
     r"""blockproc function like matlab
     Difference:
         - Partial blocks is discarded (if exist) for fast GPU process.
@@ -865,7 +865,7 @@ def _blockproc_torch(x, kernel, fun, border_size=None, pad_partial=False, pad_me
         blocks = blocks.reshape(b, c, *kernel, num_block_h, num_block_w)
         blocks = blocks.permute(5, 4, 0, 1, 2, 3).reshape(num_block_h * num_block_w * b, c, *kernel)
 
-        results = fun(blocks, func_args)
+        results = fun(blocks)
         results = results.reshape(num_block_h * num_block_w, b, *results.shape[1:]).transpose(0, 1)
         return results
 
@@ -1257,7 +1257,7 @@ def _fit_mscn_ipac_torch(tensor: torch.Tensor,
 
         distparam.append(_blockproc_torch(structdis,
                                           [block_size_height // scale, block_size_width // scale],
-                                          fun=_get_mscn_feature))
+                                          fun=_get_mscn_feature_torch))
 
         if scale == 1:
             tensor = _image_resize_torch(tensor / 255., scale=0.5, antialiasing=True)
