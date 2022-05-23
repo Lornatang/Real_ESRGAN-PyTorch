@@ -79,15 +79,13 @@ Source of original paper results: [https://arxiv.org/pdf/2107.10833v2.pdf](https
 
 In the following table, the value in `()` indicates the result of the project, and `-` indicates no test.
 
-| Set5 | Scale |     RealESRNe      |     RealESRGAN     |
-|:----:|:-----:|:------------------:|:------------------:|
-| PSNR |   4   |  32.05(**32.16**)  |  29.40(**29.08**)  |
-| SSIM |   4   | 0.9019(**0.8961**) | 0.8472(**0.8305**) |
+| Set5 | Scale | RealESRNet  | RealESRGAN  |
+|:----:|:-----:|:-----------:|:-----------:|
+| NIQE |   4   | -(**9.65**) | -(**7.08**) |
 
-| Set14 | Scale |     RealESRNe      |     RealESRGAN     |
-|:-----:|:-----:|:------------------:|:------------------:|
-| PSNR  |   4   |  28.49(**28.62**)  |  26.02(**25.89**)  |
-| SSIM  |   4   | 0.8184(**0.7831**) | 0.7397(**0.6932**) |
+| Set14 | Scale | RealESRNet  | RealESRGAN  |
+|:-----:|:-----:|:-----------:|:-----------:|
+| NIQE  |   4   | -(**7.07**) | -(**4.79**) |
 
 Low resolution / Recovered High Resolution / Ground Truth
 <span align="center"><img src="assets/result.png"/></span>
