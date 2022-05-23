@@ -88,7 +88,7 @@ In the following table, the value in `()` indicates the result of the project, a
 | NIQE  |   4   | -(**7.09**) | -(**4.79**) |
 
 Low resolution / Recovered High Resolution / Ground Truth
-<span align="center"><img src="assets/result.png"/></span>
+<span align="center"><img src="figure/result.png"/></span>
 
 ### Contributing
 
