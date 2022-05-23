@@ -94,11 +94,11 @@ def main():
     niqe_model = NIQE(config.upscale_factor, config.niqe_model_path)
 
     # Transfer the IQA model to the specified device
-    niqe_model = niqe_model.to(device=config.device, memory_format=torch.channels_last, non_blocking=True)
+    niqe_model = niqe_model.to(device=config.device, non_blocking=True)
 
     # Create an Exponential Moving Average Model
     ema_model = EMA(model, config.ema_model_weight_decay)
-    ema_model = ema_model.to(device=config.device, memory_format=torch.channels_last, non_blocking=True)
+    ema_model = ema_model.to(device=config.device, non_blocking=True)
     ema_model.register()
 
     for epoch in range(start_epoch, config.epochs):
@@ -175,14 +175,14 @@ def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher, CUDAPrefetcher]:
 
 def build_model() -> nn.Module:
     model = Generator(config.in_channels, config.out_channels, config.upscale_factor)
-    model = model.to(device=config.device, memory_format=torch.channels_last)
+    model = model.to(device=config.device, non_blocking=True)
 
     return model
 
 
 def define_loss() -> nn.L1Loss:
     pixel_criterion = nn.L1Loss()
-    pixel_criterion = pixel_criterion.to(device=config.device, memory_format=torch.channels_last)
+    pixel_criterion = pixel_criterion.to(device=config.device, non_blocking=True)
 
     return pixel_criterion
 
@@ -250,11 +250,10 @@ def train(model: nn.Module,
         # Calculate the time it takes to load a batch of data
         data_time.update(time.time() - end)
 
-        hr = batch_data["hr"].to(device=config.device, memory_format=torch.channels_last, non_blocking=True)
-        kernel1 = batch_data["kernel1"].to(device=config.device, memory_format=torch.channels_last, non_blocking=True)
-        kernel2 = batch_data["kernel2"].to(device=config.device, memory_format=torch.channels_last, non_blocking=True)
-        sinc_kernel = batch_data["sinc_kernel"].to(device=config.device, memory_format=torch.channels_last,
-                                                   non_blocking=True)
+        hr = batch_data["hr"].to(device=config.device, non_blocking=True)
+        kernel1 = batch_data["kernel1"].to(device=config.device, non_blocking=True)
+        kernel2 = batch_data["kernel2"].to(device=config.device, non_blocking=True)
+        sinc_kernel = batch_data["sinc_kernel"].to(device=config.device, non_blocking=True)
 
         # # Sharpen high-resolution images
         out = usm_sharpener(hr)
@@ -447,7 +446,7 @@ def validate(model: nn.Module,
 
     with torch.no_grad():
         while batch_data is not None:
-            lr = batch_data["lr"].to(device=config.device, memory_format=torch.channels_last, non_blocking=True)
+            lr = batch_data["lr"].to(device=config.device, non_blocking=True)
 
             # Mixed precision
             with amp.autocast():
