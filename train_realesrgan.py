@@ -17,6 +17,7 @@ import random
 import shutil
 import time
 from enum import Enum
+from typing import Any
 
 import numpy as np
 import torch
@@ -31,7 +32,7 @@ from torch.utils.tensorboard import SummaryWriter
 import config
 import imgproc
 from dataset import CUDAPrefetcher, TrainValidImageDataset, TestImageDataset
-from image_quality_assessment import PSNR, SSIM
+from image_quality_assessment import NIQE
 from model import Generator, Discriminator, EMA, ContentLoss
 
 
@@ -40,8 +41,7 @@ def main():
     start_epoch = 0
 
     # Initialize training to generate network evaluation indicators
-    best_psnr = 0.0
-    best_ssim = 0.0
+    best_niqe = 100.0
 
     train_prefetcher, valid_prefetcher, test_prefetcher = load_dataset()
     print("Load dataset successfully.")
@@ -71,8 +71,7 @@ def main():
         checkpoint = torch.load(config.resume_d, map_location=lambda storage, loc: storage)
         # Restore the parameters in the training node to this point
         start_epoch = checkpoint["epoch"]
-        best_psnr = checkpoint["best_psnr"]
-        best_ssim = checkpoint["best_ssim"]
+        best_niqe = checkpoint["best_niqe"]
         # Load checkpoint state dict. Extract the fitted model weights
         model_state_dict = discriminator.state_dict()
         new_state_dict = {k: v for k, v in checkpoint["state_dict"].items() if k in model_state_dict.keys()}
@@ -91,8 +90,7 @@ def main():
         checkpoint = torch.load(config.resume_g, map_location=lambda storage, loc: storage)
         # Restore the parameters in the training node to this point
         start_epoch = checkpoint["epoch"]
-        best_psnr = checkpoint["best_psnr"]
-        best_ssim = checkpoint["best_ssim"]
+        best_niqe = checkpoint["best_niqe"]
         # Load checkpoint state dict. Extract the fitted model weights
         model_state_dict = generator.state_dict()
         new_state_dict = {k: v for k, v in checkpoint["state_dict"].items() if k in model_state_dict.keys()}
@@ -120,12 +118,10 @@ def main():
     scaler = amp.GradScaler()
 
     # Create an IQA evaluation model
-    psnr_model = PSNR(config.upscale_factor, config.only_test_y_channel)
-    ssim_model = SSIM(config.upscale_factor, config.only_test_y_channel)
+    niqe_model = NIQE(config.upscale_factor, config.only_test_y_channel)
 
     # Transfer the IQA model to the specified device
-    psnr_model = psnr_model.to(device=config.device, memory_format=torch.channels_last, non_blocking=True)
-    ssim_model = ssim_model.to(device=config.device, memory_format=torch.channels_last, non_blocking=True)
+    niqe_model = niqe_model.to(device=config.device, memory_format=torch.channels_last, non_blocking=True)
 
     # Create an Exponential Moving Average Model
     ema_model = EMA(generator, config.ema_model_weight_decay)
@@ -145,8 +141,8 @@ def main():
               epoch,
               scaler,
               writer)
-        _, _ = validate(generator, ema_model, valid_prefetcher, epoch, writer, psnr_model, ssim_model, "Valid")
-        psnr, ssim = validate(generator, ema_model, test_prefetcher, epoch, writer, psnr_model, ssim_model, "Test")
+        _ = validate(generator, ema_model, valid_prefetcher, epoch, writer, niqe_model, "Valid")
+        niqe = validate(generator, ema_model, test_prefetcher, epoch, writer, niqe_model, "Test")
         print("\n")
 
         # Update LR
@@ -154,19 +150,16 @@ def main():
         g_scheduler.step()
 
         # Automatically save the model with the highest index
-        is_best = psnr > best_psnr and ssim > best_ssim
-        best_psnr = max(psnr, best_psnr)
-        best_ssim = max(ssim, best_ssim)
+        is_best = niqe < best_niqe
+        best_niqe = min(niqe, best_niqe)
         torch.save({"epoch": epoch + 1,
-                    "best_psnr": best_psnr,
-                    "best_ssim": best_ssim,
+                    "best_niqe": best_niqe,
                     "state_dict": discriminator.state_dict(),
                     "optimizer": d_optimizer.state_dict(),
                     "scheduler": d_scheduler.state_dict()},
                    os.path.join(samples_dir, f"d_epoch_{epoch + 1}.pth.tar"))
         torch.save({"epoch": epoch + 1,
-                    "best_psnr": best_psnr,
-                    "best_ssim": best_ssim,
+                    "best_niqe": best_niqe,
                     "state_dict": ema_model.state_dict(),
                     "optimizer": g_optimizer.state_dict(),
                     "scheduler": g_scheduler.state_dict()},
@@ -556,9 +549,8 @@ def validate(model: nn.Module,
              data_prefetcher: CUDAPrefetcher,
              epoch: int,
              writer: SummaryWriter,
-             psnr_model: nn.Module,
-             ssim_model: nn.Module,
-             mode: str) -> [float, float]:
+             niqe_model: Any,
+             mode: str) -> float:
     """Test main program
 
     Args:
@@ -567,17 +559,15 @@ def validate(model: nn.Module,
         data_prefetcher (CUDAPrefetcher): test dataset iterator
         epoch (int): number of test epochs during training of the adversarial network
         writer (SummaryWriter): log file management function
-        psnr_model (nn.Module): The model used to calculate the PSNR function
-        ssim_model (nn.Module): The model used to compute the SSIM function
+        niqe_model (nn.Module): The model used to calculate the model NIQE metric
         mode (str): test validation dataset accuracy or test dataset accuracy
 
     """
     # Calculate how many batches of data are in each Epoch
     batches = len(data_prefetcher)
     batch_time = AverageMeter("Time", ":6.3f")
-    psnres = AverageMeter("PSNR", ":4.2f")
-    ssimes = AverageMeter("SSIM", ":4.4f")
-    progress = ProgressMeter(len(data_prefetcher), [batch_time, psnres, ssimes], prefix=f"{mode}: ")
+    niqe_metrics = AverageMeter("NIQE", ":4.2f")
+    progress = ProgressMeter(len(data_prefetcher), [batch_time, niqe_metrics], prefix=f"{mode}: ")
 
     # Restore the model before the EMA
     ema_model.apply_shadow()
@@ -597,17 +587,14 @@ def validate(model: nn.Module,
     with torch.no_grad():
         while batch_data is not None:
             lr = batch_data["lr"].to(device=config.device, memory_format=torch.channels_last, non_blocking=True)
-            hr = batch_data["hr"].to(device=config.device, memory_format=torch.channels_last, non_blocking=True)
 
             # Mixed precision
             with amp.autocast():
                 sr = model(lr)
 
             # Statistical loss value for terminal data output
-            psnr = psnr_model(sr, hr)
-            ssim = ssim_model(sr, hr)
-            psnres.update(psnr.item(), lr.size(0))
-            ssimes.update(ssim.item(), lr.size(0))
+            niqe = niqe_model(sr)
+            niqe_metrics.update(niqe.item(), lr.size(0))
 
             # Calculate the time it takes to fully test a batch of data
             batch_time.update(time.time() - end)
@@ -621,7 +608,7 @@ def validate(model: nn.Module,
             batch_data = data_prefetcher.next()
 
             # After training a batch of data, add 1 to the number of data batches to ensure that the
-            # terminal prints data normally
+            # terminal print data normally
             batch_index += 1
 
     # Restoring the EMA model
@@ -631,15 +618,13 @@ def validate(model: nn.Module,
     progress.display_summary()
 
     if mode == "Valid" or mode == "Test":
-        writer.add_scalar(f"{mode}/PSNR", psnres.avg, epoch + 1)
-        writer.add_scalar(f"{mode}/SSIM", psnres.avg, epoch + 1)
+        writer.add_scalar(f"{mode}/NIQE", niqe_metrics.avg, epoch + 1)
     else:
         raise ValueError("Unsupported mode, please use `Valid` or `Test`.")
 
-    return psnres.avg
+    return niqe_metrics.avg
 
 
-# Copy form "https://github.com/pytorch/examples/blob/master/imagenet/main.py"
 class Summary(Enum):
     NONE = 0
     AVERAGE = 1
