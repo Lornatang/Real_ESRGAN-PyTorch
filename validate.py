@@ -26,7 +26,7 @@ from model import Generator
 
 def main() -> None:
     # Initialize the super-resolution model
-    model = Generator().to(device=config.device, memory_format=torch.channels_last)
+    model = Generator(config.in_channels, config.out_channels, config.upscale_factor).to(device=config.device, memory_format=torch.channels_last)
     print("Build Real_ESRGAN model successfully.")
 
     # Load the super-resolution model weights
@@ -92,7 +92,7 @@ def main() -> None:
     # NIQE range value is 0~100
     avg_niqe = 100 if niqe_metrics / total_files > 100 else niqe_metrics / total_files
 
-    print(f"NIQE: {avg_niqe:4.2f} u")
+    print(f"NIQE: {avg_niqe:4.2f} 100u")
 
 
 if __name__ == "__main__":
