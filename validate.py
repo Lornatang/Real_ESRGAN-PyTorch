@@ -45,7 +45,7 @@ def main() -> None:
     model.half()
 
     # Initialize the sharpness evaluation function
-    niqe = NIQE(config.upscale_factor, os.path.join("results", "pretrained_models", "niqe_model.mat"))
+    niqe = NIQE(config.upscale_factor, config.niqe_model_path)
 
     # Set the sharpness evaluation function calculation device to the specified model
     niqe = niqe.to(device=config.device, memory_format=torch.channels_last, non_blocking=True)

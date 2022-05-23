@@ -118,7 +118,7 @@ def main():
     scaler = amp.GradScaler()
 
     # Create an IQA evaluation model
-    niqe_model = NIQE(config.upscale_factor, config.only_test_y_channel)
+    niqe_model = NIQE(config.upscale_factor, config.niqe_model_path)
 
     # Transfer the IQA model to the specified device
     niqe_model = niqe_model.to(device=config.device, memory_format=torch.channels_last, non_blocking=True)

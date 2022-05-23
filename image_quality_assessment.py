@@ -13,7 +13,6 @@
 # ==============================================================================
 import collections.abc
 import math
-import os
 import typing
 from itertools import repeat
 
@@ -152,7 +151,7 @@ def _fit_mscn_ipac(image: np.ndarray,
 
     features_parameters = np.concatenate(features_parameters, axis=1)
 
-    # 将多元高斯核模型拟合到扭曲的补丁特征
+    # Fitting a multivariate Gaussian kernel model to distorted patch features
     mu_distparam = np.nanmean(features_parameters, axis=0)
     distparam_no_nan = features_parameters[~np.isnan(features_parameters).any(axis=1)]
     cov_distparam = np.cov(distparam_no_nan, rowvar=False)
@@ -169,7 +168,7 @@ def _fit_mscn_ipac(image: np.ndarray,
 
 def niqe(image: np.ndarray,
          crop_border: int,
-         niqe_model_path: str = None,
+         niqe_model_path: str,
          block_size_height: int = 96,
          block_size_width: int = 96) -> float:
     """Python implements the NIQE (Natural Image Quality Evaluator) function,
@@ -191,10 +190,7 @@ def niqe(image: np.ndarray,
         image = image[crop_border:-crop_border, crop_border:-crop_border, ...]
 
     # Defining the NIQE Feature Extraction Model
-    if niqe_model_path is None:
-        niqe_model = np.load(os.path.join("results", "pretrained_models", "niqe_model.npz"))
-    else:
-        niqe_model = np.load(niqe_model_path)
+    niqe_model = np.load(niqe_model_path)
 
     mu_pris_param = niqe_model["mu_pris_param"]
     cov_pris_param = niqe_model["cov_pris_param"]
@@ -953,7 +949,7 @@ def _fit_mscn_ipac_torch(tensor: torch.Tensor,
 
 def _niqe_torch(tensor: torch.Tensor,
                 crop_border: int,
-                niqe_model_path: str = None,
+                niqe_model_path: str,
                 block_size_height: int = 96,
                 block_size_width: int = 96
                 ) -> torch.Tensor:
@@ -974,11 +970,8 @@ def _niqe_torch(tensor: torch.Tensor,
     if crop_border > 0:
         tensor = tensor[:, :, crop_border:-crop_border, crop_border:-crop_border]
 
-    # 加载NIQE特征提取模型
-    if niqe_model_path is None:
-        niqe_model = scipy.io.loadmat(os.path.join("results", "pretrained_models", "niqe_model.mat"))
-    else:
-        niqe_model = scipy.io.loadmat(niqe_model_path)
+    # Load the NIQE feature extraction model
+    niqe_model = scipy.io.loadmat(niqe_model_path)
 
     mu_pris_param = np.ravel(niqe_model["mu_prisparam"])
     cov_pris_param = niqe_model["cov_prisparam"]
