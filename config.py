@@ -92,7 +92,6 @@ if mode == "train_realesrnet":
     num_workers = 4
 
     # Incremental training and migration training
-    start_epoch = 0
     resume = ""
 
     # Total num epochs
@@ -122,7 +121,6 @@ if mode == "train_realesrgan":
     num_workers = 4
 
     # Incremental training and migration training
-    start_epoch = 0
     resume = "results/RealESRNet_baseline/g_last.pth.tar"
     resume_d = ""
     resume_g = ""
@@ -158,4 +156,4 @@ if mode == "valid":
     sr_dir = f"results/test/{exp_name}"
     hr_dir = f"data/Set5/GTmod12"
 
-    model_path = f"results/{exp_name}/g_last.pth.tar"
+    model_path = "results/pretrained_models/RealESRNet_x4-DFO2K-c000086fa.pth.tar"

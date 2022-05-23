@@ -36,6 +36,9 @@ from model import Generator, Discriminator, EMA, ContentLoss
 
 
 def main():
+    # Initialize the number of training epochs
+    start_epoch = 0
+
     # Initialize training to generate network evaluation indicators
     best_psnr = 0.0
     best_ssim = 0.0
@@ -52,7 +55,7 @@ def main():
     d_optimizer, g_optimizer = define_optimizer(discriminator, generator)
     print("Define all optimizer functions successfully.")
 
-    d_scheduler, g_scheduler = define_optimizer(discriminator, generator)
+    d_scheduler, g_scheduler = define_scheduler(d_optimizer, g_optimizer)
     print("Define all optimizer scheduler functions successfully.")
 
     if config.resume:
@@ -67,8 +70,9 @@ def main():
         # Load checkpoint model
         checkpoint = torch.load(config.resume_d, map_location=lambda storage, loc: storage)
         # Restore the parameters in the training node to this point
-        config.start_epoch = checkpoint["epoch"]
+        start_epoch = checkpoint["epoch"]
         best_psnr = checkpoint["best_psnr"]
+        best_ssim = checkpoint["best_ssim"]
         # Load checkpoint state dict. Extract the fitted model weights
         model_state_dict = discriminator.state_dict()
         new_state_dict = {k: v for k, v in checkpoint["state_dict"].items() if k in model_state_dict.keys()}
@@ -86,8 +90,9 @@ def main():
         # Load checkpoint model
         checkpoint = torch.load(config.resume_g, map_location=lambda storage, loc: storage)
         # Restore the parameters in the training node to this point
-        config.start_epoch = checkpoint["epoch"]
+        start_epoch = checkpoint["epoch"]
         best_psnr = checkpoint["best_psnr"]
+        best_ssim = checkpoint["best_ssim"]
         # Load checkpoint state dict. Extract the fitted model weights
         model_state_dict = generator.state_dict()
         new_state_dict = {k: v for k, v in checkpoint["state_dict"].items() if k in model_state_dict.keys()}
@@ -127,7 +132,7 @@ def main():
     ema_model = ema_model.to(device=config.device, memory_format=torch.channels_last, non_blocking=True)
     ema_model.register()
 
-    for epoch in range(config.start_epoch, config.epochs):
+    for epoch in range(start_epoch, config.epochs):
         train(discriminator,
               generator,
               ema_model,

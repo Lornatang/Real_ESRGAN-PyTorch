@@ -11,10 +11,12 @@ This repository contains an op-for-op PyTorch reimplementation of [Real-ESRGAN: 
     - [Table of contents](#table-of-contents)
     - [Download weights](#download-weights)
     - [Download datasets](#download-datasets)
-    - [Test](#test)
-    - [Train](#train)
+    - [How Test and Train](#how-test-and-train)
+        - [Test](#test)
         - [Train RealESRNet model](#train-realesrnet-model)
+        - [Resume train RealESRNet model](#resume-train-realesrnet-model)
         - [Train RealESRGAN model](#train-realesrgan-model)
+        - [Resume train RealESRGAN model](#resume-train-realesrgan-model)
     - [Result](#result)
     - [Contributing](#contributing)
     - [Credit](#credit)
@@ -32,34 +34,44 @@ Contains DIV2K, DIV8K, Flickr2K, OST, T91, Set5, Set14, BSDS100 and BSDS200, etc
 - [Google Driver](https://drive.google.com/drive/folders/1A6lzGeQrFMxPqJehK9s37ce-tPDj20mD?usp=sharing)
 - [Baidu Driver](https://pan.baidu.com/s/1o-8Ty_7q6DiS3ykLU09IVg?pwd=llot)
 
-## Test
+## How Test and Train
 
-Modify the contents of the `config.py` file as follows.
+Both training and testing only need to modify the `config.py` file. 
 
-- line 79: `upscale_factor` change to the magnification you need to enlarge.
-- line 81: `mode` change Set to valid mode.
-- line 161: `model_path` change weight address after training.
+### Test
 
-## Train
-
-Modify the contents of the `config.py` file as follows.
-
-- line 79: `upscale_factor` change to the magnification you need to enlarge.
-- line 81: `mode` change set to train mode.
-
-If you want to load weights that you've trained before, modify the contents of the file as follows.
+- line 77: `upscale_factor` change to `4`.
+- line 79: `mode` change to `valid`.
+- line 159: `model_path` change to `results/pretrained_models/RealESRNet_x4-DFO2K-c000086fa.pth.tar`.
 
 ### Train RealESRNet model
 
-- line 95: `start_epoch` change number of RealRRDBNet training iterations in the previous round.
-- line 96: `resume` change to RealRRDBNet weight address that needs to be loaded.
+- line 77: `upscale_factor` change to `4`.
+- line 79: `mode` change to `train_realesrnet`.
+- line 81: `exp_name` change to `RealESRNet_baseline`.
+
+### Resume train RealESRNet model
+
+- line 77: `upscale_factor` change to `4`.
+- line 79: `mode` change to `train_realesrnet`.
+- line 81: `exp_name` change to `RealESRNet_baseline`.
+- line 95: `resume` change to `samples/RealESRNet_baseline/g_epoch_xxx.pth.tar`.
 
 ### Train RealESRGAN model
 
-- line 125: `start_epoch` change number of Real_ESRGAN training iterations in the previous round.
-- line 126: `resume` change to Real_RRDBNet weight address that needs to be loaded.
-- line 127: `resume_d` change to Discriminator weight address that needs to be loaded.
-- line 128: `resume_g` change to Generator weight address that needs to be loaded.
+- line 77: `upscale_factor` change to `4`.
+- line 79: `mode` change to `train_realesrgan`.
+- line 81: `exp_name` change to `RealESRGAN_baseline`.
+- line 124: `resume` change to `results/RealESRNet_baseline/g_last.pth.tar`.
+
+### Resume train RealESRGAN model
+
+- line 77: `upscale_factor` change to `4`.
+- line 79: `mode` change to `train_realesrgan`.
+- line 81: `exp_name` change to `RealESRGAN_baseline`.
+- line 124: `resume` change to `results/RealESRNet_baseline/g_last.pth.tar`.
+- line 125: `resume_d` change to `samples/RealESRGAN_baseline/g_epoch_xxx.pth.tar`.
+- line 126: `resume_g` change to `samples/RealESRGAN_baseline/g_epoch_xxx.pth.tar`.
 
 ### Result
 
@@ -67,10 +79,15 @@ Source of original paper results: [https://arxiv.org/pdf/2107.10833v2.pdf](https
 
 In the following table, the value in `()` indicates the result of the project, and `-` indicates no test.
 
-| Dataset | Scale | Real_RRDBNet (PSNR) | Real_ESRGAN (PSNR) |
-|:-------:|:-----:|:-------------------:|:------------------:|
-|  Set5   |   4   |    -(**29.28**)     |    -(**26.50**)    |
-|  Set14  |   4   |    -(**26.95**)     |    -(**25.23**)    |
+| Set5 | Scale |     RealESRNe      |     RealESRGAN     |
+|:----:|:-----:|:------------------:|:------------------:|
+| PSNR |   4   |  32.05(**32.16**)  |  29.40(**29.08**)  |
+| SSIM |   4   | 0.9019(**0.8961**) | 0.8472(**0.8305**) |
+
+| Set14 | Scale |     RealESRNe      |     RealESRGAN     |
+|:-----:|:-----:|:------------------:|:------------------:|
+| PSNR  |   4   |  28.49(**28.62**)  |  26.02(**25.89**)  |
+| SSIM  |   4   | 0.8184(**0.7831**) | 0.7397(**0.6932**) |
 
 Low resolution / Recovered High Resolution / Ground Truth
 <span align="center"><img src="assets/result.png"/></span>
