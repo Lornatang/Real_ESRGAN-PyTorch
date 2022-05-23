@@ -69,6 +69,8 @@ np.random.seed(0)
 device = torch.device("cuda", 0)
 # Turning on when the image size does not change during training can speed up training
 cudnn.benchmark = True
+# NIQE model address
+niqe_model_path = "results/pretrained_models/niqe_model.mat"
 # Model Architecture Parameters
 in_channels = 3
 out_channels = 3
@@ -154,7 +156,4 @@ if mode == "valid":
     sr_dir = f"results/test/{exp_name}"
     hr_dir = f"data/Set5/GTmod12"
 
-    # NIQE model address
-    niqe_model_path = "results/pretrained_models/niqe_model.mat"
-
-    model_path = "results/pretrained_models/RealESRNet_x4-DFO2K-c000086fa.pth.tar"
+    model_path = "results/pretrained_models/RealESRNet_x4-DFO2K-5b34f555.pth.tar"

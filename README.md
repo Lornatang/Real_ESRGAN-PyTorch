@@ -40,38 +40,38 @@ Both training and testing only need to modify the `config.py` file.
 
 ### Test
 
-- line 75: `upscale_factor` change to `4`.
-- line 77: `mode` change to `valid`.
-- line 160: `model_path` change to `results/pretrained_models/RealESRNet_x4-DFO2K-c000086fa.pth.tar`.
+- line 77: `upscale_factor` change to `4`.
+- line 79: `mode` change to `valid`.
+- line 159: `model_path` change to `results/pretrained_models/RealESRNet_x4-DFO2K-5b34f555.pth.tar`.
 
 ### Train RealESRNet model
 
-- line 75: `upscale_factor` change to `4`.
-- line 77: `mode` change to `train_realesrnet`.
-- line 79: `exp_name` change to `RealESRNet_baseline`.
+- line 77: `upscale_factor` change to `4`.
+- line 79: `mode` change to `train_realesrnet`.
+- line 81: `exp_name` change to `RealESRNet_baseline`.
 
 ### Resume train RealESRNet model
 
-- line 75: `upscale_factor` change to `4`.
-- line 77: `mode` change to `train_realesrnet`.
-- line 79: `exp_name` change to `RealESRNet_baseline`.
-- line 93: `resume` change to `samples/RealESRNet_baseline/g_epoch_xxx.pth.tar`.
+- line 77: `upscale_factor` change to `4`.
+- line 79: `mode` change to `train_realesrnet`.
+- line 81: `exp_name` change to `RealESRNet_baseline`.
+- line 95: `resume` change to `samples/RealESRNet_baseline/g_epoch_xxx.pth.tar`.
 
 ### Train RealESRGAN model
 
-- line 75: `upscale_factor` change to `4`.
-- line 77: `mode` change to `train_realesrgan`.
-- line 79: `exp_name` change to `RealESRGAN_baseline`.
-- line 122: `resume` change to `results/RealESRNet_baseline/g_last.pth.tar`.
+- line 77: `upscale_factor` change to `4`.
+- line 79: `mode` change to `train_realesrgan`.
+- line 81: `exp_name` change to `RealESRGAN_baseline`.
+- line 124: `resume` change to `results/RealESRNet_baseline/g_last.pth.tar`.
 
 ### Resume train RealESRGAN model
 
-- line 75: `upscale_factor` change to `4`.
-- line 77: `mode` change to `train_realesrgan`.
-- line 79: `exp_name` change to `RealESRGAN_baseline`.
-- line 122: `resume` change to `results/RealESRNet_baseline/g_last.pth.tar`.
-- line 123: `resume_d` change to `samples/RealESRGAN_baseline/g_epoch_xxx.pth.tar`.
-- line 124: `resume_g` change to `samples/RealESRGAN_baseline/g_epoch_xxx.pth.tar`.
+- line 77: `upscale_factor` change to `4`.
+- line 79: `mode` change to `train_realesrgan`.
+- line 81: `exp_name` change to `RealESRGAN_baseline`.
+- line 124: `resume` change to `results/RealESRNet_baseline/g_last.pth.tar`.
+- line 125: `resume_d` change to `samples/RealESRGAN_baseline/g_epoch_xxx.pth.tar`.
+- line 126: `resume_g` change to `samples/RealESRGAN_baseline/g_epoch_xxx.pth.tar`.
 
 ### Result
 
@@ -81,11 +81,11 @@ In the following table, the value in `()` indicates the result of the project, a
 
 | Set5 | Scale | RealESRNet  | RealESRGAN  |
 |:----:|:-----:|:-----------:|:-----------:|
-| NIQE |   4   | -(**9.65**) | -(**7.08**) |
+| NIQE |   4   | -(**9.67**) | -(**7.10**) |
 
 | Set14 | Scale | RealESRNet  | RealESRGAN  |
 |:-----:|:-----:|:-----------:|:-----------:|
-| NIQE  |   4   | -(**7.07**) | -(**4.79**) |
+| NIQE  |   4   | -(**7.09**) | -(**4.79**) |
 
 Low resolution / Recovered High Resolution / Ground Truth
 <span align="center"><img src="assets/result.png"/></span>
