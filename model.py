@@ -149,8 +149,14 @@ class Discriminator(nn.Module):
             spectral_norm(nn.Conv2d(128, 64, (3, 3), (1, 1), (1, 1), bias=False)),
             nn.LeakyReLU(0.2, True),
         )
-        self.conv2 = spectral_norm(nn.Conv2d(64, 64, (3, 3), (1, 1), (1, 1), bias=False))
-        self.conv3 = spectral_norm(nn.Conv2d(64, 64, (3, 3), (1, 1), (1, 1), bias=False))
+        self.conv2 = nn.Sequential(
+            spectral_norm(nn.Conv2d(64, 64, (3, 3), (1, 1), (1, 1), bias=False)),
+            nn.LeakyReLU(0.2, True),
+        )
+        self.conv3 = nn.Sequential(
+            spectral_norm(nn.Conv2d(64, 64, (3, 3), (1, 1), (1, 1), bias=False)),
+            nn.LeakyReLU(0.2, True),
+        )
         self.conv4 = nn.Conv2d(64, 1, (3, 3), (1, 1), (1, 1))
 
         # Initialize model weights.
@@ -187,19 +193,6 @@ class Discriminator(nn.Module):
         out = self.conv4(out)
 
         return out
-
-    def _initialize_weights(self) -> None:
-        for module in self.modules():
-            if isinstance(module, nn.Conv2d):
-                nn.init.kaiming_normal_(module.weight, mode="fan_out", nonlinearity="leaky_relu")
-                if module.bias is not None:
-                    nn.init.constant_(module.bias, 0)
-            elif isinstance(module, nn.BatchNorm2d):
-                nn.init.constant_(module.weight, 1)
-                nn.init.constant_(module.bias, 0)
-            elif isinstance(module, nn.Linear):
-                nn.init.normal_(module.weight, 0, 0.01)
-                nn.init.constant_(module.bias, 0)
 
 
 class Generator(nn.Module):

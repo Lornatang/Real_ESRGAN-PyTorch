@@ -20,7 +20,6 @@ from torch.backends import cudnn
 degradation_model_parameters_dict = {
     "sinc_kernel_size": 21,
     "gaussian_kernel_range": [7, 9, 11, 13, 15, 17, 19, 21],
-    "gaussian_kernel_size1": 21,
     "gaussian_kernel_type": ["isotropic", "anisotropic",
                              "generalized_isotropic", "generalized_anisotropic",
                              "plateau_isotropic", "plateau_anisotropic"],
