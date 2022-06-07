@@ -465,6 +465,8 @@ def train(discriminator: nn.Module,
 
         # Calculate the perceptual loss of the generator, mainly including pixel loss, feature loss and adversarial loss
         with amp.autocast():
+            # Use the generator model to generate fake samples
+            sr = generator(lr)
             pixel_loss = config.pixel_weight * pixel_criterion(usm_sharpener(sr), hr)
             content_loss = torch.sum(torch.multiply(config.content_weight, content_criterion(usm_sharpener(sr), hr)))
             adversarial_loss = config.adversarial_weight * adversarial_criterion(discriminator(sr), real_label)
@@ -494,8 +496,6 @@ def train(discriminator: nn.Module,
 
         # Calculate the classification score of the discriminator model for fake samples
         with amp.autocast():
-            # Use the generator model to generate fake samples
-            sr = generator(lr)
             sr_output = discriminator(sr.detach().clone())
             d_loss_sr = adversarial_criterion(sr_output, fake_label)
             # Calculate the total discriminator loss value
