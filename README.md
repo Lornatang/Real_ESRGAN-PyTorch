@@ -41,7 +41,7 @@ Both training and testing only need to modify the `config.py` file.
 ### Test
 
 - line 77: `upscale_factor` change to `4`.
-- line 79: `mode` change to `valid`.
+- line 79: `mode` change to `test`.
 - line 159: `model_path` change to `results/pretrained_models/RealESRNet_x4-DFO2K-5b34f555.pth.tar`.
 
 ### Train RealESRNet model
@@ -79,16 +79,30 @@ Source of original paper results: [https://arxiv.org/pdf/2107.10833v2.pdf](https
 
 In the following table, the value in `()` indicates the result of the project, and `-` indicates no test.
 
-| Set5 | Scale | RealESRNet  | RealESRGAN  |
-|:----:|:-----:|:-----------:|:-----------:|
-| NIQE |   4   | -(**9.67**) | -(**7.10**) |
+|   Method   | Scale | Set5 (NIQE) | Set14 (NIQE) |
+|:----------:|:-----:|:-----------:|:------------:|
+| RealESRNet |   4   | -(**9.67**) | -(**7.09**)  |
+| RealESRGAN |   4   | -(**7.10**) | -(**4.79**)  |
 
-| Set14 | Scale | RealESRNet  | RealESRGAN  |
-|:-----:|:-----:|:-----------:|:-----------:|
-| NIQE  |   4   | -(**7.09**) | -(**4.79**) |
+```bash
+# Download `RealESRGAN_x4-DFO2K-b62d9c82.pth.tar`` weights to `./results/pretrained_models`
+# More detail see `README.md<Download weights>`
+python ./inference.py --inputs_path ./figure/tree_lr.png --output_path ./figure/tree_sr.png --weights_path ./results/pretrained_models/RealESRGAN_x4-DFO2K-b62d9c82.pth.tar`
+```
 
-Low resolution / Recovered High Resolution / Ground Truth
-<span align="center"><img src="figure/result.png"/></span>
+Input: 
+
+<span align="center"><img width="2048" height="1024" src="figure/tree_lr.png"/></span>
+
+Output: 
+
+<span align="center"><img width="2048" height="1024" src="figure/tree_sr.png"/></span>
+
+```text
+Build Real_ESRGAN model successfully.
+Load Real_ESRGAN model weights `./results/pretrained_models/RealESRGAN_x4-DFO2K-b62d9c82.pth.tar` successfully.
+SR image save to `./figure/tree_sr.png`
+```
 
 ### Contributing
 
@@ -114,7 +128,7 @@ dynamics. Extensive comparisons have shown its superior visual performance than 
 also provide efficient implementations to synthesize training pairs on the fly.
 at [this https URL](https://github.com/xinntao/ESRGAN).
 
-[[Paper]](https://arxiv.org/pdf/1609.04802) [[Author implement(PyTorch)]](https://github.com/xinntao/Real-ESRGAN)
+[[Paper]](https://arxiv.org/pdf/2107.10833v2.pdf) [[Author's implement(PyTorch)]](https://github.com/xinntao/Real-ESRGAN)
 
 ```bibtex
 @InProceedings{wang2021realesrgan,

@@ -69,7 +69,7 @@ device = torch.device("cuda", 0)
 # Turning on when the image size does not change during training can speed up training
 cudnn.benchmark = True
 # NIQE model address
-niqe_model_path = "results/pretrained_models/niqe_model.mat"
+niqe_model_path = "./results/pretrained_models/niqe_model.mat"
 # Model Architecture Parameters
 in_channels = 3
 out_channels = 3
@@ -81,10 +81,10 @@ exp_name = "RealESRNet_baseline"
 
 if mode == "train_realesrnet":
     # Dataset address
-    train_image_dir = "data/DIV2K/Real_ESRGAN/train"
-    valid_image_dir = "data/DIV2K/Real_ESRGAN/valid"
-    test_lr_image_dir = f"data/Set5/LRbicx{upscale_factor}"
-    test_hr_image_dir = f"data/Set5/GTmod12"
+    train_image_dir = "./data/DIV2K/Real_ESRGAN/train"
+    valid_image_dir = "./data/DIV2K/Real_ESRGAN/valid"
+    test_lr_image_dir = f"./data/Set5/LRbicx{upscale_factor}"
+    test_hr_image_dir = f"./data/Set5/GTmod12"
 
     image_size = 256
     batch_size = 48
@@ -110,17 +110,17 @@ if mode == "train_realesrnet":
 
 if mode == "train_realesrgan":
     # Dataset address
-    train_image_dir = "data/DIV2K/Real_ESRGAN/train"
-    valid_image_dir = "data/DIV2K/Real_ESRGAN/valid"
-    test_lr_image_dir = f"data/Set5/LRbicx{upscale_factor}"
-    test_hr_image_dir = f"data/Set5/GTmod12"
+    train_image_dir = "./data/DIV2K/Real_ESRGAN/train"
+    valid_image_dir = "./data/DIV2K/Real_ESRGAN/valid"
+    test_lr_image_dir = f"./data/Set5/LRbicx{upscale_factor}"
+    test_hr_image_dir = f"./data/Set5/GTmod12"
 
     image_size = 256
     batch_size = 48
     num_workers = 4
 
     # Incremental training and migration training
-    resume = "results/RealESRNet_baseline/g_last.pth.tar"
+    resume = "./results/RealESRNet_baseline/g_last.pth.tar"
     resume_d = ""
     resume_g = ""
 
@@ -149,10 +149,10 @@ if mode == "train_realesrgan":
     # How many iterations to print the training result
     print_frequency = 200
 
-if mode == "valid":
+if mode == "test":
     # Test data address
-    lr_dir = f"data/Set5/LRbicx{upscale_factor}"
-    sr_dir = f"results/test/{exp_name}"
-    hr_dir = f"data/Set5/GTmod12"
+    lr_dir = f"./data/Set5/LRbicx{upscale_factor}"
+    sr_dir = f"./results/test/{exp_name}"
+    hr_dir = f"./data/Set5/GTmod12"
 
-    model_path = "results/pretrained_models/RealESRNet_x4-DFO2K-5b34f555.pth.tar"
+    model_path = "./results/pretrained_models/RealESRNet_x4-DFO2K-5b34f555.pth.tar"

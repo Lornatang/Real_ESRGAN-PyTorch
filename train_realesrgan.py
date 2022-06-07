@@ -11,7 +11,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""File description: Train the ESRGAN model."""
 import os
 import random
 import shutil
@@ -510,7 +509,8 @@ def train(discriminator: nn.Module,
         # Update EMA
         ema_model.update()
 
-        # Calculate the score of the discriminator on real samples and fake samples, the score of real samples is close to 1, and the score of fake samples is close to 0
+        # Calculate the score of the discriminator on real samples and fake samples,
+        # the score of real samples is close to 1, and the score of fake samples is close to 0
         d_hr_probability = torch.sigmoid_(torch.mean(hr_output.detach()))
         d_sr_probability = torch.sigmoid_(torch.mean(sr_output.detach()))
 
@@ -540,7 +540,8 @@ def train(discriminator: nn.Module,
         # Preload the next batch of data
         batch_data = train_prefetcher.next()
 
-        # After training a batch of data, add 1 to the number of data batches to ensure that the terminal prints data normally
+        # After training a batch of data, add 1 to the number of data batches to ensure that the
+        # terminal print data normally
         batch_index += 1
 
 
@@ -633,8 +634,6 @@ class Summary(Enum):
 
 
 class AverageMeter(object):
-    """Computes and stores the average and current value"""
-
     def __init__(self, name, fmt=":f", summary_type=Summary.AVERAGE):
         self.name = name
         self.fmt = fmt
