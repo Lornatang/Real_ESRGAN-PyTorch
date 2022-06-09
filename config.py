@@ -155,4 +155,4 @@ if mode == "test":
     sr_dir = f"./results/test/{exp_name}"
     hr_dir = f"./data/Set5/GTmod12"
 
-    model_path = "./results/pretrained_models/RealESRNet_x4-DFO2K-5b34f555.pth.tar"
+    model_path = "./results/pretrained_models/RealESRGAN_x4-DFO2K-e4f68c8d.pth.tar"

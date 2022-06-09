@@ -92,7 +92,8 @@ def main():
         best_niqe = checkpoint["best_niqe"]
         # Load checkpoint state dict. Extract the fitted model weights
         model_state_dict = generator.state_dict()
-        new_state_dict = {k: v for k, v in checkpoint["state_dict"].items() if k in model_state_dict.keys()}
+        new_state_dict = {k.replace("model.", ""): v for k, v in checkpoint["state_dict"].items() if
+                          k in model_state_dict.keys()}
         # Overwrite the pretrained model weights to the current model
         model_state_dict.update(new_state_dict)
         generator.load_state_dict(model_state_dict)

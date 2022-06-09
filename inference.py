@@ -30,7 +30,7 @@ def main(args):
 
     # Load the CRNN model weights
     checkpoint = torch.load(args.weights_path, map_location=lambda storage, loc: storage)
-    model.load_state_dict(checkpoint["state_dict"])
+    model.load_state_dict({k.replace("model.", ""): v for k, v in checkpoint["state_dict"].items()})
     print(f"Load Real_ESRGAN model weights `{args.weights_path}` successfully.")
 
     # Start the verification mode of the model.
