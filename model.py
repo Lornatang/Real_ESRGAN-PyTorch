@@ -308,8 +308,11 @@ class ContentLoss(nn.Module):
         for model_parameters in self.feature_extractor.parameters():
             model_parameters.requires_grad = False
 
-    def forward(self, sr_tensor: torch.Tensor, hr_tensor: torch.Tensor) -> [torch.Tensor, torch.Tensor,
-                                                                            torch.Tensor, torch.Tensor]:
+    def forward(self, sr_tensor: torch.Tensor, hr_tensor: torch.Tensor) -> [torch.Tensor,
+                                                                            torch.Tensor,
+                                                                            torch.Tensor,
+                                                                            torch.Tensor,
+                                                                            torch.Tensor]:
         # Standardized operations
         sr_tensor = self.normalize(sr_tensor)
         hr_tensor = self.normalize(hr_tensor)
@@ -326,5 +329,7 @@ class ContentLoss(nn.Module):
                                   hr_features[self.feature_model_extractor_nodes[2]])
         content_loss4 = F.l1_loss(sr_features[self.feature_model_extractor_nodes[3]],
                                   hr_features[self.feature_model_extractor_nodes[3]])
+        content_loss5 = F.l1_loss(sr_features[self.feature_model_extractor_nodes[4]],
+                                  hr_features[self.feature_model_extractor_nodes[4]])
 
-        return content_loss1, content_loss2, content_loss3, content_loss4
+        return content_loss1, content_loss2, content_loss3, content_loss4, content_loss5
