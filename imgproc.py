@@ -27,7 +27,7 @@ from torchvision.transforms import functional as F_vision
 from torchvision.transforms.functional_tensor import rgb_to_grayscale
 
 __all__ = [
-    "image2tensor", "tensor2image",
+    "image_to_tensor", "tensor_to_image",
     "image_resize",
     "expand_y", "rgb2ycbcr", "bgr2ycbcr", "ycbcr2bgr", "ycbcr2rgb",
     "rgb2ycbcr_torch", "bgr2ycbcr_torch",
@@ -35,7 +35,7 @@ __all__ = [
 ]
 
 
-def image2tensor(image: np.ndarray, range_norm: bool, half: bool) -> torch.Tensor:
+def image_to_tensor(image: np.ndarray, range_norm: bool, half: bool) -> torch.Tensor:
     """Convert the image data type to the Tensor (NCWH) data type supported by PyTorch
 
     Args:
@@ -47,8 +47,8 @@ def image2tensor(image: np.ndarray, range_norm: bool, half: bool) -> torch.Tenso
         tensor (torch.Tensor): Data types supported by PyTorch
 
     Examples:
-        >>> example_image = cv2.imread("lr_image.bmp")
-        >>> example_tensor = image2tensor(example_image, range_norm=True, half=False)
+        >>> example_image = cv2.imread("example_image.bmp")
+        >>> example_tensor = image_to_tensor(example_image, False, False)
 
     """
     # Convert image data type to Tensor data type
@@ -65,7 +65,7 @@ def image2tensor(image: np.ndarray, range_norm: bool, half: bool) -> torch.Tenso
     return tensor
 
 
-def tensor2image(tensor: torch.Tensor, range_norm: bool, half: bool) -> Any:
+def tensor_to_image(tensor: torch.Tensor, range_norm: bool, half: bool) -> Any:
     """Convert the Tensor(NCWH) data type supported by PyTorch to the np.ndarray(WHC) image data type
 
     Args:
@@ -77,12 +77,15 @@ def tensor2image(tensor: torch.Tensor, range_norm: bool, half: bool) -> Any:
         image (np.ndarray): Data types supported by PIL or OpenCV
 
     Examples:
-        >>> example_image = cv2.imread("lr_image.bmp")
-        >>> example_tensor = image2tensor(example_image, range_norm=False, half=False)
+        >>> example_tensor = torch.randn([1,3, 256, 256], dtype=torch.float)
+        >>> example_image = tensor_to_image(example_tensor, False, False)
 
     """
+    # Scale the image data from [-1, 1] to [0, 1]
     if range_norm:
         tensor = tensor.add(1.0).div(2.0)
+
+    # Convert torch.float32 image data type to torch.half image data type
     if half:
         tensor = tensor.half()
 

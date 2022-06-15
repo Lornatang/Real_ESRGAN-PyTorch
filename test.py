@@ -68,7 +68,7 @@ def main() -> None:
         lr_image = cv2.cvtColor(lr_image, cv2.COLOR_BGR2RGB)
 
         # Convert RGB channel image format data to Tensor channel image format data
-        lr_tensor = imgproc.image2tensor(lr_image, False, False).unsqueeze_(0)
+        lr_tensor = imgproc.image_to_tensor(lr_image, False, False).unsqueeze_(0)
 
         # Transfer Tensor channel image format data to CUDA device
         lr_tensor = lr_tensor.to(device=config.device, memory_format=torch.channels_last, non_blocking=True)
@@ -78,7 +78,7 @@ def main() -> None:
             sr_tensor = model(lr_tensor)
 
         # Save image
-        sr_image = imgproc.tensor2image(sr_tensor, False, False)
+        sr_image = imgproc.tensor_to_image(sr_tensor, False, False)
         sr_image = cv2.cvtColor(sr_image, cv2.COLOR_RGB2BGR)
         cv2.imwrite(sr_image_path, sr_image)
 

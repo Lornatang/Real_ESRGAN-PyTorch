@@ -76,7 +76,7 @@ class TrainValidImageDataset(Dataset):
 
             # Convert image data into Tensor stream format (PyTorch).
             # Note: The range of input and output is between [0, 1]
-            hr_tensor = imgproc.image2tensor(hr_image, range_norm=False, half=False)
+            hr_tensor = imgproc.image_to_tensor(hr_image, range_norm=False, half=False)
 
             # First degenerate operation
             kernel_size1 = random.choice(self.parameters["gaussian_kernel_range"])
@@ -154,8 +154,8 @@ class TrainValidImageDataset(Dataset):
 
             # Convert image data into Tensor stream format (PyTorch).
             # Note: The range of input and output is between [0, 1]
-            lr_tensor = imgproc.image2tensor(lr_image, range_norm=False, half=False)
-            hr_tensor = imgproc.image2tensor(hr_image, range_norm=False, half=False)
+            lr_tensor = imgproc.image_to_tensor(lr_image, range_norm=False, half=False)
+            hr_tensor = imgproc.image_to_tensor(hr_image, range_norm=False, half=False)
 
             return {"lr": lr_tensor, "hr": hr_tensor}
 
@@ -188,8 +188,8 @@ class TestImageDataset(Dataset):
 
         # Convert image data into Tensor stream format (PyTorch).
         # Note: The range of input and output is between [0, 1]
-        lr_tensor = imgproc.image2tensor(lr_image, range_norm=False, half=False)
-        hr_tensor = imgproc.image2tensor(hr_image, range_norm=False, half=False)
+        lr_tensor = imgproc.image_to_tensor(lr_image, range_norm=False, half=False)
+        hr_tensor = imgproc.image_to_tensor(hr_image, range_norm=False, half=False)
 
         return {"lr": lr_tensor, "hr": hr_tensor}
 
