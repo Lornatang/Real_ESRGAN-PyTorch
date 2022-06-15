@@ -29,10 +29,119 @@ from torchvision.transforms.functional_tensor import rgb_to_grayscale
 __all__ = [
     "image_to_tensor", "tensor_to_image",
     "image_resize",
-    "expand_y", "rgb2ycbcr", "bgr2ycbcr", "ycbcr2bgr", "ycbcr2rgb",
+    "expand_y",
+    "rgb2ycbcr", "bgr2ycbcr", "ycbcr2bgr", "ycbcr2rgb",
     "rgb2ycbcr_torch", "bgr2ycbcr_torch",
     "center_crop", "random_crop", "random_rotate", "random_horizontally_flip", "random_vertically_flip",
 ]
+
+y_table = np.array(
+    [[16, 11, 10, 16, 24, 40, 51, 61], [12, 12, 14, 19, 26, 58, 60, 55], [14, 13, 16, 24, 40, 57, 69, 56],
+     [14, 17, 22, 29, 51, 87, 80, 62], [18, 22, 37, 56, 68, 109, 103, 77], [24, 35, 55, 64, 81, 104, 113, 92],
+     [49, 64, 78, 87, 103, 121, 120, 101], [72, 92, 95, 98, 112, 100, 103, 99]],
+    dtype=np.float32).T
+y_table = nn.Parameter(torch.from_numpy(y_table))
+c_table = np.empty((8, 8), dtype=np.float32)
+c_table.fill(99)
+c_table[:4, :4] = np.array([[17, 18, 24, 47], [18, 21, 26, 66], [24, 26, 56, 99], [47, 66, 99, 99]]).T
+c_table = nn.Parameter(torch.from_numpy(c_table))
+
+
+def _cubic(x: float) -> float:
+    """Python implements `cubic()` in Matlab
+
+    Args:
+        x (float): pixel value
+
+    Returns:
+        cubic (float): bicubic core
+
+    """
+    abs_x = torch.abs(x)
+    abs_x2 = abs_x ** 2
+    abs_x3 = abs_x ** 3
+    cubic1 = (1.5 * abs_x3 - 2.5 * abs_x2 + 1) * ((abs_x <= 1).type_as(abs_x))
+    cubic2 = (-0.5 * abs_x3 + 2.5 * abs_x2 - 4 * abs_x + 2) * (((abs_x > 1) * (abs_x <= 2)).type_as(abs_x))
+    cubic = cubic1 + cubic2
+
+    return cubic
+
+
+def _calculate_weights_indices(in_length: int,
+                               out_length: int,
+                               scale: float,
+                               kernel_width: int,
+                               antialiasing: bool) -> [np.ndarray, np.ndarray, int, int]:
+    """Implementation of `calculate_weights_indices()` in Matlab under Python language.
+
+    Args:
+        in_length (int): Input length.
+        out_length (int): Output length.
+        scale (float): Scale factor.
+        kernel_width (int): Kernel width.
+        antialiasing (bool): Whether to apply antialiasing when down-sampling operations.
+            Caution: Bicubic down-sampling in PIL uses antialiasing by default.
+
+    Returns:
+
+    """
+    if (scale < 1) and antialiasing:
+        # Use a modified kernel (larger kernel width) to simultaneously
+        # interpolate and antialiasing
+        kernel_width = kernel_width / scale
+
+    # Output-space coordinates
+    x = torch.linspace(1, out_length, out_length)
+
+    # Input-space coordinates. Calculate the inverse mapping such that 0.5
+    # in output space maps to 0.5 in input space, and 0.5 + scale in output
+    # space maps to 1.5 in input space.
+    u = x / scale + 0.5 * (1 - 1 / scale)
+
+    # What is the left-most pixel that can be involved in the computation?
+    left = torch.floor(u - kernel_width / 2)
+
+    # What is the maximum number of pixels that can be involved in the
+    # computation?  Note: it's OK to use an extra pixel here; if the
+    # corresponding weights are all zero, it will be eliminated at the end
+    # of this function.
+    p = math.ceil(kernel_width) + 2
+
+    # The indices of the input pixels involved in computing the k-th output
+    # pixel are in row k of the indices matrix.
+    indices = left.view(out_length, 1).expand(out_length, p) + torch.linspace(0, p - 1, p).view(1, p).expand(out_length,
+                                                                                                             p)
+
+    # The weights used to compute the k-th output pixel are in row k of the
+    # weights matrix.
+    distance_to_center = u.view(out_length, 1).expand(out_length, p) - indices
+
+    # apply cubic kernel
+    if (scale < 1) and antialiasing:
+        weights = scale * _cubic(distance_to_center * scale)
+    else:
+        weights = _cubic(distance_to_center)
+
+    # Normalize the weights matrix so that each row sums to 1.
+    weights_sum = torch.sum(weights, 1).view(out_length, 1)
+    weights = weights / weights_sum.expand(out_length, p)
+
+    # If a column in weights is all zero, get rid of it. only consider the
+    # first and last column.
+    weights_zero_tmp = torch.sum((weights == 0), 0)
+    if not math.isclose(weights_zero_tmp[0], 0, rel_tol=1e-6):
+        indices = indices.narrow(1, 1, p - 2)
+        weights = weights.narrow(1, 1, p - 2)
+    if not math.isclose(weights_zero_tmp[-1], 0, rel_tol=1e-6):
+        indices = indices.narrow(1, 0, p - 2)
+        weights = weights.narrow(1, 0, p - 2)
+    weights = weights.contiguous()
+    indices = indices.contiguous()
+    sym_len_s = -indices.min() + 1
+    sym_len_e = indices.max() - in_length
+    indices = indices + sym_len_s - 1
+
+    return weights, indices, int(sym_len_s), int(sym_len_e)
 
 
 def image_to_tensor(image: np.ndarray, range_norm: bool, half: bool) -> torch.Tensor:
@@ -94,6 +203,408 @@ def tensor_to_image(tensor: torch.Tensor, range_norm: bool, half: bool) -> Any:
     return image
 
 
+def image_resize(image: np.ndarray, scale_factor: float, antialiasing: bool = True) -> np.ndarray:
+    """Implementation of `imresize` function in Matlab under Python language.
+
+    Args:
+        image: The input image.
+        scale_factor (float): Scale factor. The same scale applies for both height and width.
+        antialiasing (bool): Whether to apply antialiasing when down-sampling operations.
+            Caution: Bicubic down-sampling in `PIL` uses antialiasing by default. Default: ``True``.
+
+    Returns:
+        np.ndarray: Output image with shape (c, h, w), [0, 1] range, w/o round.
+    """
+    squeeze_flag = False
+    if type(image).__module__ == np.__name__:  # numpy type
+        numpy_type = True
+        if image.ndim == 2:
+            image = image[:, :, None]
+            squeeze_flag = True
+        image = torch.from_numpy(image.transpose(2, 0, 1)).float()
+    else:
+        numpy_type = False
+        if image.ndim == 2:
+            image = image.unsqueeze(0)
+            squeeze_flag = True
+
+    in_c, in_h, in_w = image.size()
+    out_h, out_w = math.ceil(in_h * scale_factor), math.ceil(in_w * scale_factor)
+    kernel_width = 4
+
+    # get weights and indices
+    weights_h, indices_h, sym_len_hs, sym_len_he = _calculate_weights_indices(in_h, out_h, scale_factor, kernel_width,
+                                                                              antialiasing)
+    weights_w, indices_w, sym_len_ws, sym_len_we = _calculate_weights_indices(in_w, out_w, scale_factor, kernel_width,
+                                                                              antialiasing)
+    # process H dimension
+    # symmetric copying
+    img_aug = torch.FloatTensor(in_c, in_h + sym_len_hs + sym_len_he, in_w)
+    img_aug.narrow(1, sym_len_hs, in_h).copy_(image)
+
+    sym_patch = image[:, :sym_len_hs, :]
+    inv_idx = torch.arange(sym_patch.size(1) - 1, -1, -1).long()
+    sym_patch_inv = sym_patch.index_select(1, inv_idx)
+    img_aug.narrow(1, 0, sym_len_hs).copy_(sym_patch_inv)
+
+    sym_patch = image[:, -sym_len_he:, :]
+    inv_idx = torch.arange(sym_patch.size(1) - 1, -1, -1).long()
+    sym_patch_inv = sym_patch.index_select(1, inv_idx)
+    img_aug.narrow(1, sym_len_hs + in_h, sym_len_he).copy_(sym_patch_inv)
+
+    out_1 = torch.FloatTensor(in_c, out_h, in_w)
+    kernel_width = weights_h.size(1)
+    for i in range(out_h):
+        idx = int(indices_h[i][0])
+        for j in range(in_c):
+            out_1[j, i, :] = img_aug[j, idx:idx + kernel_width, :].transpose(0, 1).mv(weights_h[i])
+
+    # process W dimension
+    # symmetric copying
+    out_1_aug = torch.FloatTensor(in_c, out_h, in_w + sym_len_ws + sym_len_we)
+    out_1_aug.narrow(2, sym_len_ws, in_w).copy_(out_1)
+
+    sym_patch = out_1[:, :, :sym_len_ws]
+    inv_idx = torch.arange(sym_patch.size(2) - 1, -1, -1).long()
+    sym_patch_inv = sym_patch.index_select(2, inv_idx)
+    out_1_aug.narrow(2, 0, sym_len_ws).copy_(sym_patch_inv)
+
+    sym_patch = out_1[:, :, -sym_len_we:]
+    inv_idx = torch.arange(sym_patch.size(2) - 1, -1, -1).long()
+    sym_patch_inv = sym_patch.index_select(2, inv_idx)
+    out_1_aug.narrow(2, sym_len_ws + in_w, sym_len_we).copy_(sym_patch_inv)
+
+    out_2 = torch.FloatTensor(in_c, out_h, out_w)
+    kernel_width = weights_w.size(1)
+    for i in range(out_w):
+        idx = int(indices_w[i][0])
+        for j in range(in_c):
+            out_2[j, :, i] = out_1_aug[j, :, idx:idx + kernel_width].mv(weights_w[i])
+
+    if squeeze_flag:
+        out_2 = out_2.squeeze(0)
+    if numpy_type:
+        out_2 = out_2.numpy()
+        if not squeeze_flag:
+            out_2 = out_2.transpose(1, 2, 0)
+
+    return out_2
+
+
+def expand_y(image: np.ndarray) -> np.ndarray:
+    """Convert BGR channel to YCbCr format, and expand Y channel data in YCbCr, from HW to HWC
+
+    Args:
+        image (np.ndarray): Y channel image data
+
+    Returns:
+        y_image (np.ndarray): Y-channel image data in HWC
+
+    """
+    # Normalize image data to [0, 1]
+    image = image.astype(np.float32) / 255.
+
+    # Convert BGR to YCbCr, and extract only Y channel
+    y_image = bgr2ycbcr(image, True)
+
+    # Expand Y channel
+    y_image = y_image[..., None]
+
+    # Normalize the image data to [0, 255]
+    y_image = y_image.astype(np.float64) * 255.0
+
+    return y_image
+
+
+def rgb2ycbcr(image: np.ndarray, only_use_y_channel: bool) -> np.ndarray:
+    """Implementation of `rgb2ycbcr()` in Matlab under Python language
+
+    Formula reference: `https://en.wikipedia.org/wiki/YCbCr#ITU-R_BT.601_conversion`
+
+    Args:
+        image (np.ndarray): Image input in RGB format
+        only_use_y_channel (bool): Extract Y channel separately
+
+    Returns:
+        image (np.ndarray): YCbCr image array data
+
+    """
+    if only_use_y_channel:
+        image = np.dot(image, [65.481, 128.553, 24.966]) + 16.0
+    else:
+        image = np.matmul(image, [[65.481, -37.797, 112.0], [128.553, -74.203, -93.786], [24.966, 112.0, -18.214]]) + [
+            16, 128, 128]
+
+    image /= 255.
+    image = image.astype(np.float32)
+
+    return image
+
+
+def bgr2ycbcr(image: np.ndarray, only_use_y_channel: bool) -> np.ndarray:
+    """Implementation of `bgr2ycbcr()` in Matlab under Python language
+
+    Formula reference: `https://en.wikipedia.org/wiki/YCbCr#ITU-R_BT.601_conversion`
+
+    Args:
+        image (np.ndarray): Image input in BGR format
+        only_use_y_channel (bool): Extract Y channel separately
+
+    Returns:
+        image (np.ndarray): YCbCr image array data
+
+    """
+    if only_use_y_channel:
+        image = np.dot(image, [24.966, 128.553, 65.481]) + 16.0
+    else:
+        image = np.matmul(image, [[24.966, 112.0, -18.214], [128.553, -74.203, -93.786], [65.481, -37.797, 112.0]]) + [
+            16, 128, 128]
+
+    image /= 255.
+    image = image.astype(np.float32)
+
+    return image
+
+
+def ycbcr2rgb(image: np.ndarray) -> np.ndarray:
+    """Implementation of `ycbcr2rgb()` in Matlab under Python language.
+
+    Formula reference: `https://en.wikipedia.org/wiki/YCbCr#ITU-R_BT.601_conversion`
+
+    Args:
+        image (np.ndarray): Image input in YCbCr format
+
+    Returns:
+        image (np.ndarray): RGB image array data
+
+    """
+    image_dtype = image.dtype
+    image *= 255.
+
+    image = np.matmul(image, [[0.00456621, 0.00456621, 0.00456621],
+                              [0, -0.00153632, 0.00791071],
+                              [0.00625893, -0.00318811, 0]]) * 255.0 + [-222.921, 135.576, -276.836]
+
+    image /= 255.
+    image = image.astype(image_dtype)
+
+    return image
+
+
+def ycbcr2bgr(image: np.ndarray) -> np.ndarray:
+    """Implementation of `ycbcr2bgr()` in Matlab under Python language.
+
+    Formula reference: `https://en.wikipedia.org/wiki/YCbCr#ITU-R_BT.601_conversion`
+
+    Args:
+        image (np.ndarray): Image input in YCbCr format.
+
+    Returns:
+        image (np.ndarray): BGR image array data
+
+    """
+    image_dtype = image.dtype
+    image *= 255.
+
+    image = np.matmul(image, [[0.00456621, 0.00456621, 0.00456621],
+                              [0.00791071, -0.00153632, 0],
+                              [0, -0.00318811, 0.00625893]]) * 255.0 + [-276.836, 135.576, -222.921]
+
+    image /= 255.
+    image = image.astype(image_dtype)
+
+    return image
+
+
+def rgb2ycbcr_torch(tensor: torch.Tensor, only_use_y_channel: bool) -> torch.Tensor:
+    """Implementation of `rgb2ycbcr()` in Matlab under PyTorch
+
+    Formula reference: `https://en.wikipedia.org/wiki/YCbCr#ITU-R_BT.601_conversion`
+
+    Args:
+        tensor (torch.Tensor): Image data in PyTorch format
+        only_use_y_channel (bool): Extract only Y channel
+
+    Returns:
+        tensor (torch.Tensor): YCbCr image data in PyTorch format
+
+    """
+    if only_use_y_channel:
+        weight = torch.Tensor([[65.481], [128.553], [24.966]]).to(tensor)
+        tensor = torch.matmul(tensor.permute(0, 2, 3, 1), weight).permute(0, 3, 1, 2) + 16.0
+    else:
+        weight = torch.Tensor([[65.481, -37.797, 112.0],
+                               [128.553, -74.203, -93.786],
+                               [24.966, 112.0, -18.214]]).to(tensor)
+        bias = torch.Tensor([16, 128, 128]).view(1, 3, 1, 1).to(tensor)
+        tensor = torch.matmul(tensor.permute(0, 2, 3, 1), weight).permute(0, 3, 1, 2) + bias
+
+    tensor /= 255.
+
+    return tensor
+
+
+def bgr2ycbcr_torch(tensor: torch.Tensor, only_use_y_channel: bool) -> torch.Tensor:
+    """Implementation of `bgr2ycbcr()` in Matlab under PyTorch
+
+    Formula reference: `https://en.wikipedia.org/wiki/YCbCr#ITU-R_BT.601_conversion`
+
+    Args:
+        tensor (torch.Tensor): Image data in PyTorch format
+        only_use_y_channel (bool): Extract only Y channel
+
+    Returns:
+        tensor (torch.Tensor): YCbCr image data in PyTorch format
+
+    """
+    if only_use_y_channel:
+        weight = torch.Tensor([[24.966], [128.553], [65.481]]).to(tensor)
+        tensor = torch.matmul(tensor.permute(0, 2, 3, 1), weight).permute(0, 3, 1, 2) + 16.0
+    else:
+        weight = torch.Tensor([[24.966, 112.0, -18.214],
+                               [128.553, -74.203, -93.786],
+                               [65.481, -37.797, 112.0]]).to(tensor)
+        bias = torch.Tensor([16, 128, 128]).view(1, 3, 1, 1).to(tensor)
+        tensor = torch.matmul(tensor.permute(0, 2, 3, 1), weight).permute(0, 3, 1, 2) + bias
+
+    tensor /= 255.
+
+    return tensor
+
+
+def center_crop(image: np.ndarray, image_size: int) -> np.ndarray:
+    """Crop small image patches from one image center area.
+
+    Args:
+        image (np.ndarray): The input image for `OpenCV.imread`.
+        image_size (int): The size of the captured image area.
+
+    Returns:
+        np.ndarray: Small patch image
+
+    """
+    image_height, image_width = image.shape[:2]
+
+    # Just need to find the top and left coordinates of the image
+    top = (image_height - image_size) // 2
+    left = (image_width - image_size) // 2
+
+    # Crop image patch
+    patch_image = image[top:top + image_size, left:left + image_size, ...]
+
+    return patch_image
+
+
+def random_crop(lr_images: torch.Tensor,
+                hr_images: torch.Tensor,
+                hr_image_size: int,
+                upscale_factor: int) -> [torch.Tensor, torch.Tensor]:
+    """Crop small image patches from one image.
+
+    Args:
+        lr_images (torch.Tensor): Low resolution images
+        hr_images (torch.Tensor): High resolution images
+        hr_image_size (int): The size of the captured high-resolution image area.
+        upscale_factor (int): How many times the high-resolution image should be the low-resolution image
+
+    Returns:
+        patch_lr_images, patch_hr_images (torch.Tensor, torch.Tensor): Small lr patch images, Small hr patch images
+
+    """
+    hr_image_height, hr_image_width = hr_images[0].size()[1:]
+
+    # Just need to find the top and left coordinates of the image
+    hr_top = random.randint(0, hr_image_height - hr_image_size)
+    hr_left = random.randint(0, hr_image_width - hr_image_size)
+
+    # Define the LR image position
+    lr_top = hr_top // upscale_factor
+    lr_left = hr_left // upscale_factor
+    lr_image_size = hr_image_size // upscale_factor
+
+    # Create patch images
+    patch_lr_images = torch.zeros([lr_images.shape[0], lr_images.shape[1], lr_image_size, lr_image_size],
+                                  dtype=lr_images.dtype,
+                                  device=lr_images.device)
+    patch_hr_images = torch.zeros([hr_images.shape[0], hr_images.shape[1], hr_image_size, hr_image_size],
+                                  dtype=lr_images.dtype,
+                                  device=hr_images.device)
+
+    # Crop image patch
+    for i in range(lr_images.shape[0]):
+        patch_lr_images[i, :, :, :] = lr_images[i, :, lr_top:lr_top + lr_image_size, lr_left:lr_left + lr_image_size]
+        patch_hr_images[i, :, :, :] = hr_images[i, :, hr_top:hr_top + hr_image_size, hr_left:hr_left + hr_image_size]
+
+    return patch_lr_images, patch_hr_images
+
+
+def random_rotate(image,
+                  angles: list,
+                  center: tuple[int, int] = None,
+                  scale_factor: float = 1.0) -> np.ndarray:
+    """Rotate an image by a random angle
+
+    Args:
+        image (np.ndarray): Image read with OpenCV
+        angles (list): Rotation angle range
+        center (optional, tuple[int, int]): High resolution image selection center point. Default: ``None``
+        scale_factor (optional, float): scaling factor. Default: 1.0
+
+    Returns:
+        rotated_image (np.ndarray): image after rotation
+
+    """
+    image_height, image_width = image.shape[:2]
+
+    if center is None:
+        center = (image_width // 2, image_height // 2)
+
+    # Random select specific angle
+    angle = random.choice(angles)
+    matrix = cv2.getRotationMatrix2D(center, angle, scale_factor)
+    rotated_image = cv2.warpAffine(image, matrix, (image_width, image_height))
+
+    return rotated_image
+
+
+def random_horizontally_flip(image: np.ndarray, p: float) -> np.ndarray:
+    """Flip the image upside down randomly
+
+    Args:
+        image (np.ndarray): Image read with OpenCV
+        p (float): Horizontally flip probability
+
+    Returns:
+        horizontally_flip_image (np.ndarray): image after horizontally flip
+
+    """
+    if random.random() < p:
+        horizontally_flip_image = cv2.flip(image, 1)
+    else:
+        horizontally_flip_image = image
+
+    return horizontally_flip_image
+
+
+def random_vertically_flip(image: np.ndarray, p: float) -> np.ndarray:
+    """Flip an image horizontally randomly
+
+    Args:
+        image (np.ndarray): Image read with OpenCV
+        p (float): Vertically flip probability
+
+    Returns:
+        vertically_flip_image (np.ndarray): image after vertically flip
+
+    """
+    if random.random() < p:
+        vertically_flip_image = cv2.flip(image, 0)
+    else:
+        vertically_flip_image = image
+
+    return vertically_flip_image
+
+
 def _calculate_rotate_sigma_matrix(sigma_x: float, sigma_y: float, theta: float):
     """Calculate rotated sigma matrix.
 
@@ -113,24 +624,23 @@ def _calculate_rotate_sigma_matrix(sigma_x: float, sigma_y: float, theta: float)
     return out
 
 
-def _mesh_grid(kernel_size: int):
-    """Make N-D coordinate arrays for vectorized evaluations of
-    N-D scalar/vector fields over N-D grids, given
-    one-dimensional coordinate arrays x1, x2,..., xn.
+def _mesh_grid(kernel_size: int) -> [np.ndarray, np.ndarray, np.ndarray]:
+    """Make N-D coordinate arrays for vectorized evaluations of N-D scalar/vector fields
+    over N-D grids, given one-dimensional coordinate arrays x1, x2,..., xn.
 
     Args:
         kernel_size (int): Gaussian kernel size
 
     Returns:
-        xy (np.ndarray): with the shape (kernel_size, kernel_size, 2)
-        xx (np.ndarray): with the shape (kernel_size, kernel_size)
-        yy (np.ndarray): with the shape (kernel_size, kernel_size)
+        xy (np.ndarray): Gaussian kernel with this scale ->(kernel_size, kernel_size, 2)
+        xx (np.ndarray): Gaussian kernel with this scale ->(kernel_size, kernel_size)
+        yy (np.ndarray): Gaussian kernel with this scale ->(kernel_size, kernel_size)
 
     """
     ax = np.arange(-kernel_size // 2 + 1., kernel_size // 2 + 1.)
     xx, yy = np.meshgrid(ax, ax)
-    xy = np.hstack((xx.reshape((kernel_size * kernel_size, 1)), yy.reshape(kernel_size * kernel_size, 1))).reshape(
-        kernel_size, kernel_size, 2)
+    xy = np.hstack((xx.reshape((kernel_size * kernel_size, 1)),
+                    yy.reshape(kernel_size * kernel_size, 1))).reshape(kernel_size, kernel_size, 2)
 
     return xy, xx, yy
 
@@ -907,19 +1417,6 @@ def random_add_jpg_compression(image, quality_range=(90, 100)):
     return add_jpg_compression(image, quality)
 
 
-# ------------------------ utils ------------------------#
-y_table = np.array(
-    [[16, 11, 10, 16, 24, 40, 51, 61], [12, 12, 14, 19, 26, 58, 60, 55], [14, 13, 16, 24, 40, 57, 69, 56],
-     [14, 17, 22, 29, 51, 87, 80, 62], [18, 22, 37, 56, 68, 109, 103, 77], [24, 35, 55, 64, 81, 104, 113, 92],
-     [49, 64, 78, 87, 103, 121, 120, 101], [72, 92, 95, 98, 112, 100, 103, 99]],
-    dtype=np.float32).T
-y_table = nn.Parameter(torch.from_numpy(y_table))
-c_table = np.empty((8, 8), dtype=np.float32)
-c_table.fill(99)
-c_table[:4, :4] = np.array([[17, 18, 24, 47], [18, 21, 26, 66], [24, 26, 56, 99], [47, 66, 99, 99]]).T
-c_table = nn.Parameter(torch.from_numpy(c_table))
-
-
 def diff_round(x):
     """ Differentiable rounding function
     """
@@ -1437,491 +1934,3 @@ class USMSharp(torch.nn.Module):
         sharp = img + weight * residual
         sharp = torch.clip(sharp, 0, 1)
         return soft_mask * sharp + (1 - soft_mask) * img
-
-
-# Code reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/utils/matlab_functions.py`
-def _cubic(x: Any):
-    """Implementation of `cubic` function in Matlab under Python language.
-
-    Args:
-        x: Element vector.
-
-    Returns:
-        Bicubic interpolation.
-    """
-
-    absx = torch.abs(x)
-    absx2 = absx ** 2
-    absx3 = absx ** 3
-    return (1.5 * absx3 - 2.5 * absx2 + 1) * ((absx <= 1).type_as(absx)) + (
-            -0.5 * absx3 + 2.5 * absx2 - 4 * absx + 2) * (
-               ((absx > 1) * (absx <= 2)).type_as(absx))
-
-
-# Code reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/utils/matlab_functions.py`
-def _calculate_weights_indices(in_length: int, out_length: int, scale: float, kernel_width: int, antialiasing: bool):
-    """Implementation of `calculate_weights_indices` function in Matlab under Python language.
-
-    Args:
-        in_length (int): Input length.
-        out_length (int): Output length.
-        scale (float): Scale factor.
-        kernel_width (int): Kernel width.
-        antialiasing (bool): Whether to apply antialiasing when down-sampling operations.
-            Caution: Bicubic down-sampling in PIL uses antialiasing by default.
-
-    """
-
-    if (scale < 1) and antialiasing:
-        # Use a modified kernel (larger kernel width) to simultaneously
-        # interpolate and antialiasing
-        kernel_width = kernel_width / scale
-
-    # Output-space coordinates
-    x = torch.linspace(1, out_length, out_length)
-
-    # Input-space coordinates. Calculate the inverse mapping such that 0.5
-    # in output space maps to 0.5 in input space, and 0.5 + scale in output
-    # space maps to 1.5 in input space.
-    u = x / scale + 0.5 * (1 - 1 / scale)
-
-    # What is the left-most pixel that can be involved in the computation?
-    left = torch.floor(u - kernel_width / 2)
-
-    # What is the maximum number of pixels that can be involved in the
-    # computation?  Note: it's OK to use an extra pixel here; if the
-    # corresponding weights are all zero, it will be eliminated at the end
-    # of this function.
-    p = math.ceil(kernel_width) + 2
-
-    # The indices of the input pixels involved in computing the k-th output
-    # pixel are in row k of the indices matrix.
-    indices = left.view(out_length, 1).expand(out_length, p) + torch.linspace(0, p - 1, p).view(1, p).expand(out_length,
-                                                                                                             p)
-
-    # The weights used to compute the k-th output pixel are in row k of the
-    # weights matrix.
-    distance_to_center = u.view(out_length, 1).expand(out_length, p) - indices
-
-    # apply cubic kernel
-    if (scale < 1) and antialiasing:
-        weights = scale * _cubic(distance_to_center * scale)
-    else:
-        weights = _cubic(distance_to_center)
-
-    # Normalize the weights matrix so that each row sums to 1.
-    weights_sum = torch.sum(weights, 1).view(out_length, 1)
-    weights = weights / weights_sum.expand(out_length, p)
-
-    # If a column in weights is all zero, get rid of it. only consider the
-    # first and last column.
-    weights_zero_tmp = torch.sum((weights == 0), 0)
-    if not math.isclose(weights_zero_tmp[0], 0, rel_tol=1e-6):
-        indices = indices.narrow(1, 1, p - 2)
-        weights = weights.narrow(1, 1, p - 2)
-    if not math.isclose(weights_zero_tmp[-1], 0, rel_tol=1e-6):
-        indices = indices.narrow(1, 0, p - 2)
-        weights = weights.narrow(1, 0, p - 2)
-    weights = weights.contiguous()
-    indices = indices.contiguous()
-    sym_len_s = -indices.min() + 1
-    sym_len_e = indices.max() - in_length
-    indices = indices + sym_len_s - 1
-    return weights, indices, int(sym_len_s), int(sym_len_e)
-
-
-def image_resize(image: Any, scale_factor: float, antialiasing: bool = True) -> Any:
-    """Implementation of `imresize` function in Matlab under Python language.
-
-    Args:
-        image: The input image.
-        scale_factor (float): Scale factor. The same scale applies for both height and width.
-        antialiasing (bool): Whether to apply antialiasing when down-sampling operations.
-            Caution: Bicubic down-sampling in `PIL` uses antialiasing by default. Default: ``True``.
-
-    Returns:
-        np.ndarray: Output image with shape (c, h, w), [0, 1] range, w/o round.
-    """
-    squeeze_flag = False
-    if type(image).__module__ == np.__name__:  # numpy type
-        numpy_type = True
-        if image.ndim == 2:
-            image = image[:, :, None]
-            squeeze_flag = True
-        image = torch.from_numpy(image.transpose(2, 0, 1)).float()
-    else:
-        numpy_type = False
-        if image.ndim == 2:
-            image = image.unsqueeze(0)
-            squeeze_flag = True
-
-    in_c, in_h, in_w = image.size()
-    out_h, out_w = math.ceil(in_h * scale_factor), math.ceil(in_w * scale_factor)
-    kernel_width = 4
-
-    # get weights and indices
-    weights_h, indices_h, sym_len_hs, sym_len_he = _calculate_weights_indices(in_h, out_h, scale_factor, kernel_width,
-                                                                              antialiasing)
-    weights_w, indices_w, sym_len_ws, sym_len_we = _calculate_weights_indices(in_w, out_w, scale_factor, kernel_width,
-                                                                              antialiasing)
-    # process H dimension
-    # symmetric copying
-    img_aug = torch.FloatTensor(in_c, in_h + sym_len_hs + sym_len_he, in_w)
-    img_aug.narrow(1, sym_len_hs, in_h).copy_(image)
-
-    sym_patch = image[:, :sym_len_hs, :]
-    inv_idx = torch.arange(sym_patch.size(1) - 1, -1, -1).long()
-    sym_patch_inv = sym_patch.index_select(1, inv_idx)
-    img_aug.narrow(1, 0, sym_len_hs).copy_(sym_patch_inv)
-
-    sym_patch = image[:, -sym_len_he:, :]
-    inv_idx = torch.arange(sym_patch.size(1) - 1, -1, -1).long()
-    sym_patch_inv = sym_patch.index_select(1, inv_idx)
-    img_aug.narrow(1, sym_len_hs + in_h, sym_len_he).copy_(sym_patch_inv)
-
-    out_1 = torch.FloatTensor(in_c, out_h, in_w)
-    kernel_width = weights_h.size(1)
-    for i in range(out_h):
-        idx = int(indices_h[i][0])
-        for j in range(in_c):
-            out_1[j, i, :] = img_aug[j, idx:idx + kernel_width, :].transpose(0, 1).mv(weights_h[i])
-
-    # process W dimension
-    # symmetric copying
-    out_1_aug = torch.FloatTensor(in_c, out_h, in_w + sym_len_ws + sym_len_we)
-    out_1_aug.narrow(2, sym_len_ws, in_w).copy_(out_1)
-
-    sym_patch = out_1[:, :, :sym_len_ws]
-    inv_idx = torch.arange(sym_patch.size(2) - 1, -1, -1).long()
-    sym_patch_inv = sym_patch.index_select(2, inv_idx)
-    out_1_aug.narrow(2, 0, sym_len_ws).copy_(sym_patch_inv)
-
-    sym_patch = out_1[:, :, -sym_len_we:]
-    inv_idx = torch.arange(sym_patch.size(2) - 1, -1, -1).long()
-    sym_patch_inv = sym_patch.index_select(2, inv_idx)
-    out_1_aug.narrow(2, sym_len_ws + in_w, sym_len_we).copy_(sym_patch_inv)
-
-    out_2 = torch.FloatTensor(in_c, out_h, out_w)
-    kernel_width = weights_w.size(1)
-    for i in range(out_w):
-        idx = int(indices_w[i][0])
-        for j in range(in_c):
-            out_2[j, :, i] = out_1_aug[j, :, idx:idx + kernel_width].mv(weights_w[i])
-
-    if squeeze_flag:
-        out_2 = out_2.squeeze(0)
-    if numpy_type:
-        out_2 = out_2.numpy()
-        if not squeeze_flag:
-            out_2 = out_2.transpose(1, 2, 0)
-
-    return out_2
-
-
-def expand_y(image: np.ndarray) -> np.ndarray:
-    """Convert BGR channel to YCbCr format,
-    and expand Y channel data in YCbCr, from HW to HWC
-
-    Args:
-        image (np.ndarray): Y channel image data
-
-    Returns:
-        y_image (np.ndarray): Y-channel image data in HWC form
-
-    """
-    # Normalize image data to [0, 1]
-    image = image.astype(np.float32) / 255.
-
-    # Convert BGR to YCbCr, and extract only Y channel
-    y_image = bgr2ycbcr(image, only_use_y_channel=True)
-
-    # Expand Y channel
-    y_image = y_image[..., None]
-
-    # Normalize the image data to [0, 255]
-    y_image = y_image.astype(np.float64) * 255.0
-
-    return y_image
-
-
-# Code reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/utils/matlab_functions.py`
-def rgb2ycbcr(image: np.ndarray, only_use_y_channel: bool) -> np.ndarray:
-    """Implementation of rgb2ycbcr function in Matlab under Python language
-
-    Args:
-        image (np.ndarray): Image input in RGB format.
-        only_use_y_channel (bool): Extract Y channel separately
-
-    Returns:
-        image (np.ndarray): YCbCr image array data
-
-    """
-    if only_use_y_channel:
-        image = np.dot(image, [65.481, 128.553, 24.966]) + 16.0
-    else:
-        image = np.matmul(image, [[65.481, -37.797, 112.0], [128.553, -74.203, -93.786], [24.966, 112.0, -18.214]]) + [
-            16, 128, 128]
-
-    image /= 255.
-    image = image.astype(np.float32)
-
-    return image
-
-
-# Code reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/utils/matlab_functions.py`
-def bgr2ycbcr(image: np.ndarray, only_use_y_channel: bool) -> np.ndarray:
-    """Implementation of bgr2ycbcr function in Matlab under Python language.
-
-    Args:
-        image (np.ndarray): Image input in BGR format
-        only_use_y_channel (bool): Extract Y channel separately
-
-    Returns:
-        image (np.ndarray): YCbCr image array data
-
-    """
-    if only_use_y_channel:
-        image = np.dot(image, [24.966, 128.553, 65.481]) + 16.0
-    else:
-        image = np.matmul(image, [[24.966, 112.0, -18.214], [128.553, -74.203, -93.786], [65.481, -37.797, 112.0]]) + [
-            16, 128, 128]
-
-    image /= 255.
-    image = image.astype(np.float32)
-
-    return image
-
-
-# Code reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/utils/matlab_functions.py`
-def ycbcr2rgb(image: np.ndarray) -> np.ndarray:
-    """Implementation of ycbcr2rgb function in Matlab under Python language.
-
-    Args:
-        image (np.ndarray): Image input in YCbCr format.
-
-    Returns:
-        image (np.ndarray): RGB image array data
-
-    """
-    image_dtype = image.dtype
-    image *= 255.
-
-    image = np.matmul(image, [[0.00456621, 0.00456621, 0.00456621],
-                              [0, -0.00153632, 0.00791071],
-                              [0.00625893, -0.00318811, 0]]) * 255.0 + [-222.921, 135.576, -276.836]
-
-    image /= 255.
-    image = image.astype(image_dtype)
-
-    return image
-
-
-# Code reference `https://github.com/xinntao/BasicSR/blob/master/basicsr/utils/matlab_functions.py`
-def ycbcr2bgr(image: np.ndarray) -> np.ndarray:
-    """Implementation of ycbcr2bgr function in Matlab under Python language.
-
-    Args:
-        image (np.ndarray): Image input in YCbCr format.
-
-    Returns:
-        image (np.ndarray): BGR image array data
-
-    """
-    image_dtype = image.dtype
-    image *= 255.
-
-    image = np.matmul(image, [[0.00456621, 0.00456621, 0.00456621],
-                              [0.00791071, -0.00153632, 0],
-                              [0, -0.00318811, 0.00625893]]) * 255.0 + [-276.836, 135.576, -222.921]
-
-    image /= 255.
-    image = image.astype(image_dtype)
-
-    return image
-
-
-def rgb2ycbcr_torch(tensor: torch.Tensor, only_use_y_channel: bool) -> torch.Tensor:
-    """Implementation of rgb2ycbcr function in Matlab under PyTorch
-
-    References from：`https://en.wikipedia.org/wiki/YCbCr#ITU-R_BT.601_conversion`
-
-    Args:
-        tensor (torch.Tensor): Image data in PyTorch format
-        only_use_y_channel (bool): Extract only Y channel
-
-    Returns:
-        tensor (torch.Tensor): YCbCr image data in PyTorch format
-
-    """
-    if only_use_y_channel:
-        weight = torch.Tensor([[65.481], [128.553], [24.966]]).to(tensor)
-        tensor = torch.matmul(tensor.permute(0, 2, 3, 1), weight).permute(0, 3, 1, 2) + 16.0
-    else:
-        weight = torch.Tensor([[65.481, -37.797, 112.0],
-                               [128.553, -74.203, -93.786],
-                               [24.966, 112.0, -18.214]]).to(tensor)
-        bias = torch.Tensor([16, 128, 128]).view(1, 3, 1, 1).to(tensor)
-        tensor = torch.matmul(tensor.permute(0, 2, 3, 1), weight).permute(0, 3, 1, 2) + bias
-
-    tensor /= 255.
-
-    return tensor
-
-
-def bgr2ycbcr_torch(tensor: torch.Tensor, only_use_y_channel: bool) -> torch.Tensor:
-    """Implementation of bgr2ycbcr function in Matlab under PyTorch
-
-    References from：`https://en.wikipedia.org/wiki/YCbCr#ITU-R_BT.601_conversion`
-
-    Args:
-        tensor (torch.Tensor): Image data in PyTorch format
-        only_use_y_channel (bool): Extract only Y channel
-
-    Returns:
-        tensor (torch.Tensor): YCbCr image data in PyTorch format
-
-    """
-    if only_use_y_channel:
-        weight = torch.Tensor([[24.966], [128.553], [65.481]]).to(tensor)
-        tensor = torch.matmul(tensor.permute(0, 2, 3, 1), weight).permute(0, 3, 1, 2) + 16.0
-    else:
-        weight = torch.Tensor([[24.966, 112.0, -18.214],
-                               [128.553, -74.203, -93.786],
-                               [65.481, -37.797, 112.0]]).to(tensor)
-        bias = torch.Tensor([16, 128, 128]).view(1, 3, 1, 1).to(tensor)
-        tensor = torch.matmul(tensor.permute(0, 2, 3, 1), weight).permute(0, 3, 1, 2) + bias
-
-    tensor /= 255.
-
-    return tensor
-
-
-def center_crop(image: np.ndarray, image_size: int) -> np.ndarray:
-    """Crop small image patches from one image center area.
-
-    Args:
-        image (np.ndarray): The input image for `OpenCV.imread`.
-        image_size (int): The size of the captured image area.
-
-    Returns:
-        np.ndarray: Small patch image.
-    """
-
-    image_height, image_width = image.shape[:2]
-
-    # Just need to find the top and left coordinates of the image
-    top = (image_height - image_size) // 2
-    left = (image_width - image_size) // 2
-
-    # Crop image patch
-    patch_image = image[top:top + image_size, left:left + image_size, ...]
-
-    return patch_image
-
-
-def random_crop(lr_images: torch.Tensor, hr_images: torch.Tensor,
-                hr_image_size: int, upscale_factor: int) -> [torch.Tensor, torch.Tensor]:
-    """Crop small image patches from one image.
-
-    Args:
-        lr_images (torch.Tensor): Low resolution images
-        hr_images (torch.Tensor): High resolution images
-        hr_image_size (int): The size of the captured high-resolution image area.
-        upscale_factor (int): How many times the high-resolution image should be the low-resolution image
-
-    Returns:
-        patch_lr_images, patch_hr_images (torch.Tensor, torch.Tensor): Small lr patch images, Small hr patch images
-
-    """
-    hr_image_height, hr_image_width = hr_images[0].size()[1:]
-
-    # Just need to find the top and left coordinates of the image
-    hr_top = random.randint(0, hr_image_height - hr_image_size)
-    hr_left = random.randint(0, hr_image_width - hr_image_size)
-
-    # Define the LR image position
-    lr_top = hr_top // upscale_factor
-    lr_left = hr_left // upscale_factor
-    lr_image_size = hr_image_size // upscale_factor
-
-    # Create patch images
-    patch_lr_images = torch.zeros([lr_images.shape[0], lr_images.shape[1], lr_image_size, lr_image_size],
-                                  dtype=lr_images.dtype,
-                                  device=lr_images.device)
-    patch_hr_images = torch.zeros([hr_images.shape[0], hr_images.shape[1], hr_image_size, hr_image_size],
-                                  dtype=lr_images.dtype,
-                                  device=hr_images.device)
-
-    # Crop image patch
-    for i in range(lr_images.shape[0]):
-        patch_lr_images[i, :, :, :] = lr_images[i, :, lr_top:lr_top + lr_image_size, lr_left:lr_left + lr_image_size]
-        patch_hr_images[i, :, :, :] = hr_images[i, :, hr_top:hr_top + hr_image_size, hr_left:hr_left + hr_image_size]
-
-    return patch_lr_images, patch_hr_images
-
-
-def random_rotate(image,
-                  angles: list,
-                  center: tuple[int, int] = None,
-                  scale_factor: float = 1.0) -> np.ndarray:
-    """Rotate an image by a random angle
-
-    Args:
-        image (np.ndarray): Image read with OpenCV
-        angles (list): Rotation angle range
-        center (optional, tuple[int, int]): High resolution image selection center point. Default: ``None``
-        scale_factor (optional, float): scaling factor. Default: 1.0
-
-    Returns:
-        rotated_image (np.ndarray): image after rotation
-
-    """
-    image_height, image_width = image.shape[:2]
-
-    if center is None:
-        center = (image_width // 2, image_height // 2)
-
-    # Random select specific angle
-    angle = random.choice(angles)
-    matrix = cv2.getRotationMatrix2D(center, angle, scale_factor)
-    rotated_image = cv2.warpAffine(image, matrix, (image_width, image_height))
-
-    return rotated_image
-
-
-def random_horizontally_flip(image: np.ndarray, p: float = 0.5) -> np.ndarray:
-    """Flip the image upside down randomly
-
-    Args:
-        image (np.ndarray): Image read with OpenCV
-        p (optional, float): Horizontally flip probability. Default: 0.5
-
-    Returns:
-        horizontally_flip_image (np.ndarray): image after horizontally flip
-
-    """
-    if random.random() < p:
-        horizontally_flip_image = cv2.flip(image, 1)
-    else:
-        horizontally_flip_image = image
-
-    return horizontally_flip_image
-
-
-def random_vertically_flip(image: np.ndarray, p: float = 0.5) -> np.ndarray:
-    """Flip an image horizontally randomly
-
-    Args:
-        image (np.ndarray): Image read with OpenCV
-        p (optional, float): Vertically flip probability. Default: 0.5
-
-    Returns:
-        vertically_flip_image (np.ndarray): image after vertically flip
-
-    """
-    if random.random() < p:
-        vertically_flip_image = cv2.flip(image, 0)
-    else:
-        vertically_flip_image = image
-
-    return vertically_flip_image

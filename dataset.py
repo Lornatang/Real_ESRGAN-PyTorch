@@ -67,16 +67,16 @@ class TrainValidImageDataset(Dataset):
 
         if self.mode == "Train":
             # Image data augmentation
-            hr_image = imgproc.random_rotate(image, angles=[0, 90, 180, 270])
-            hr_image = imgproc.random_horizontally_flip(hr_image, p=0.5)
-            hr_image = imgproc.random_vertically_flip(hr_image, p=0.5)
+            hr_image = imgproc.random_rotate(image, [0, 90, 180, 270])
+            hr_image = imgproc.random_horizontally_flip(hr_image, 0.5)
+            hr_image = imgproc.random_vertically_flip(hr_image, 0.5)
 
             # BGR convert to RGB
             hr_image = cv2.cvtColor(hr_image, cv2.COLOR_BGR2RGB)
 
             # Convert image data into Tensor stream format (PyTorch).
             # Note: The range of input and output is between [0, 1]
-            hr_tensor = imgproc.image_to_tensor(hr_image, range_norm=False, half=False)
+            hr_tensor = imgproc.image_to_tensor(hr_image, False, False)
 
             # First degenerate operation
             kernel_size1 = random.choice(self.parameters["gaussian_kernel_range"])
@@ -154,8 +154,8 @@ class TrainValidImageDataset(Dataset):
 
             # Convert image data into Tensor stream format (PyTorch).
             # Note: The range of input and output is between [0, 1]
-            lr_tensor = imgproc.image_to_tensor(lr_image, range_norm=False, half=False)
-            hr_tensor = imgproc.image_to_tensor(hr_image, range_norm=False, half=False)
+            lr_tensor = imgproc.image_to_tensor(lr_image, False, False)
+            hr_tensor = imgproc.image_to_tensor(hr_image, False, False)
 
             return {"lr": lr_tensor, "hr": hr_tensor}
 
@@ -188,8 +188,8 @@ class TestImageDataset(Dataset):
 
         # Convert image data into Tensor stream format (PyTorch).
         # Note: The range of input and output is between [0, 1]
-        lr_tensor = imgproc.image_to_tensor(lr_image, range_norm=False, half=False)
-        hr_tensor = imgproc.image_to_tensor(hr_image, range_norm=False, half=False)
+        lr_tensor = imgproc.image_to_tensor(lr_image, False, False)
+        hr_tensor = imgproc.image_to_tensor(hr_image, False, False)
 
         return {"lr": lr_tensor, "hr": hr_tensor}
 
