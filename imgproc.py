@@ -27,12 +27,14 @@ from torchvision.transforms import functional as F_vision
 from torchvision.transforms.functional_tensor import rgb_to_grayscale
 
 __all__ = [
+    "random_add_gaussian_noise_torch", "random_add_poisson_noise_torch", "random_mixed_kernels", "generate_sinc_kernel",
     "image_to_tensor", "tensor_to_image",
     "image_resize",
     "expand_y",
     "rgb2ycbcr", "bgr2ycbcr", "ycbcr2bgr", "ycbcr2rgb",
     "rgb2ycbcr_torch", "bgr2ycbcr_torch",
     "center_crop", "random_crop", "random_rotate", "random_horizontally_flip", "random_vertically_flip",
+    "DiffJPEG", "USMSharp"
 ]
 
 y_table = np.array(
@@ -1492,7 +1494,7 @@ class DiffJPEG(nn.Module):
         return out
 
 
-def usm_sharp(image: np.ndarray, weight: float, radius: int, threshold: int) -> np.ndarray:
+def _usm_sharp(image: np.ndarray, weight: float, radius: int, threshold: int) -> np.ndarray:
     if radius % 2 == 0:
         radius += 1
 
