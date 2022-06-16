@@ -121,11 +121,11 @@ def main():
     niqe_model = NIQE(config.upscale_factor, config.niqe_model_path)
 
     # Transfer the IQA model to the specified device
-    niqe_model = niqe_model.to(device=config.device, non_blocking=True)
+    niqe_model = niqe_model.to(device=config.device)
 
     # Create an Exponential Moving Average Model
     ema_model = EMA(generator, config.ema_model_weight_decay)
-    ema_model = ema_model.to(device=config.device, non_blocking=True)
+    ema_model = ema_model.to(device=config.device)
     ema_model.register()
 
     for epoch in range(start_epoch, config.epochs):
@@ -226,8 +226,8 @@ def build_model() -> [nn.Module, nn.Module]:
     generator = Generator(config.in_channels, config.out_channels, config.upscale_factor)
 
     # Transfer to CUDA
-    discriminator = discriminator.to(device=config.device, non_blocking=True)
-    generator = generator.to(device=config.device, non_blocking=True)
+    discriminator = discriminator.to(device=config.device)
+    generator = generator.to(device=config.device)
 
     return discriminator, generator
 
@@ -240,9 +240,9 @@ def define_loss() -> [nn.L1Loss, ContentLoss, nn.BCEWithLogitsLoss]:
     adversarial_criterion = nn.BCEWithLogitsLoss()
 
     # Transfer to CUDA
-    pixel_criterion = pixel_criterion.to(device=config.device, non_blocking=True)
-    content_criterion = content_criterion.to(device=config.device, non_blocking=True)
-    adversarial_criterion = adversarial_criterion.to(device=config.device, non_blocking=True)
+    pixel_criterion = pixel_criterion.to(device=config.device)
+    content_criterion = content_criterion.to(device=config.device)
+    adversarial_criterion = adversarial_criterion.to(device=config.device)
 
     return pixel_criterion, content_criterion, adversarial_criterion
 
@@ -293,10 +293,10 @@ def train(discriminator: nn.Module,
     """
     # Defining JPEG image manipulation methods
     jpeg_operation = imgproc.DiffJPEG(False)
-    jpeg_operation = jpeg_operation.to(device=config.device, non_blocking=True)
+    jpeg_operation = jpeg_operation.to(device=config.device)
     # Define image sharpening method
     usm_sharpener = imgproc.USMSharp(50, 0)
-    usm_sharpener = usm_sharpener.to(device=config.device, non_blocking=True)
+    usm_sharpener = usm_sharpener.to(device=config.device)
 
     # Calculate how many batches of data are in each Epoch
     batches = len(train_prefetcher)
@@ -452,8 +452,8 @@ def train(discriminator: nn.Module,
 
         # Set the real sample label to 1, and the false sample label to 0
         batch_size, _, height, width = hr.shape
-        real_label = torch.full([batch_size, 1, height, width], 1.0, dtype=hr.dtype, device=config.device)
-        fake_label = torch.full([batch_size, 1, height, width], 0.0, dtype=hr.dtype, device=config.device)
+        real_label = torch.full([batch_size, 1, height, width], 1.0, dtype=torch.float, device=config.device)
+        fake_label = torch.full([batch_size, 1, height, width], 0.0, dtype=torch.float, device=config.device)
 
         # Start training the generator model
         # During generator training, turn off discriminator backpropagation

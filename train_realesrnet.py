@@ -95,11 +95,11 @@ def main():
     niqe_model = NIQE(config.upscale_factor, config.niqe_model_path)
 
     # Transfer the IQA model to the specified device
-    niqe_model = niqe_model.to(device=config.device, non_blocking=True)
+    niqe_model = niqe_model.to(device=config.device)
 
     # Create an Exponential Moving Average Model
     ema_model = EMA(model, config.ema_model_weight_decay)
-    ema_model = ema_model.to(device=config.device, non_blocking=True)
+    ema_model = ema_model.to(device=config.device)
     ema_model.register()
 
     for epoch in range(start_epoch, config.epochs):
@@ -176,14 +176,14 @@ def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher, CUDAPrefetcher]:
 
 def build_model() -> nn.Module:
     model = Generator(config.in_channels, config.out_channels, config.upscale_factor)
-    model = model.to(device=config.device, non_blocking=True)
+    model = model.to(device=config.device)
 
     return model
 
 
 def define_loss() -> nn.L1Loss:
     pixel_criterion = nn.L1Loss()
-    pixel_criterion = pixel_criterion.to(device=config.device, non_blocking=True)
+    pixel_criterion = pixel_criterion.to(device=config.device)
 
     return pixel_criterion
 
@@ -223,10 +223,10 @@ def train(model: nn.Module,
     """
     # Defining JPEG image manipulation methods
     jpeg_operation = imgproc.DiffJPEG(False)
-    jpeg_operation = jpeg_operation.to(device=config.device, non_blocking=True)
+    jpeg_operation = jpeg_operation.to(device=config.device)
     # Define image sharpening method
     usm_sharpener = imgproc.USMSharp(50, 0)
-    usm_sharpener = usm_sharpener.to(device=config.device, non_blocking=True)
+    usm_sharpener = usm_sharpener.to(device=config.device)
 
     # Calculate how many batches of data are in each Epoch
     batches = len(train_prefetcher)
@@ -300,7 +300,7 @@ def train(model: nn.Module,
         # JPEG
         quality = out.new_zeros(out.size(0)).uniform_(*config.degradation_process_parameters_dict["jpeg_range1"])
         out = torch.clamp(out, 0, 1)  # clamp to [0, 1], otherwise JPEGer will result in unpleasant artifacts
-        out = jpeg_operation(out, quality=quality)
+        out = jpeg_operation(out, quality)
 
         # Second degradation process
         # Gaussian blur
@@ -349,12 +349,12 @@ def train(model: nn.Module,
             # JPEG
             quality = out.new_zeros(out.size(0)).uniform_(*config.degradation_process_parameters_dict["jpeg_range2"])
             out = torch.clamp(out, 0, 1)
-            out = jpeg_operation(out, quality=quality)
+            out = jpeg_operation(out, quality)
         else:
             # JPEG
             quality = out.new_zeros(out.size(0)).uniform_(*config.degradation_process_parameters_dict["jpeg_range2"])
             out = torch.clamp(out, 0, 1)
-            out = jpeg_operation(out, quality=quality)
+            out = jpeg_operation(out, quality)
 
             # Resize
             out = F.interpolate(out,
