@@ -1175,14 +1175,14 @@ def _random_add_jpg_compression(image: np.ndarray, quality_range: tuple) -> np.n
     return jpeg_image
 
 
-def _jpeg_diff_round(x: torch.float) -> torch.float:
+def _jpeg_diff_round(x: torch.Tensor) -> torch.Tensor:
     """JPEG differentiable
 
     Args:
-        x (torch.float): None.
+        x (torch.Tensor): None.
 
     Returns:
-        jpeg_differentiable (torch.float): None
+        jpeg_differentiable (torch.Tensor): None
 
     """
     jpeg_differentiable = torch.round(x) + (x - torch.round(x)) ** 3
@@ -1211,7 +1211,7 @@ class _ChromaSubsampling(nn.Module):
     def __init__(self) -> None:
         super(_ChromaSubsampling, self).__init__()
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> [torch.Tensor, torch.Tensor, torch.Tensor]:
         image = x.permute(0, 3, 1, 2).clone()
         cb = F.avg_pool2d(image[:, 1, :, :].unsqueeze(1), (2, 2), (2, 2), count_include_pad=False)
         cr = F.avg_pool2d(image[:, 2, :, :].unsqueeze(1), (2, 2), (2, 2), count_include_pad=False)
@@ -1250,7 +1250,7 @@ class _DCT8x8(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x - 128
         out = self.scale * torch.tensordot(x, self.tensor, dims=2)
-        out.view(x.shape)
+        out = out.view(x.shape)
 
         return out
 
@@ -1261,13 +1261,14 @@ class _YQuantize(nn.Module):
         self.rounding = rounding
         self.y_table = y_table
 
-    def forward(self, x: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, factor: int or float or torch.Tensor) -> torch.Tensor:
         if isinstance(factor, (int, float)):
             out = x.float() / (self.y_table * factor)
         else:
             b = factor.size(0)
             table = self.y_table.expand(b, 1, 8, 8) * factor.view(b, 1, 1, 1)
             out = x.float() / table
+
         out = self.rounding(out)
 
         return out
@@ -1279,7 +1280,7 @@ class _CQuantize(nn.Module):
         self.rounding = rounding
         self.c_table = c_table
 
-    def forward(self, x: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, factor: int or float or torch.Tensor) -> torch.Tensor:
         if isinstance(factor, (int, float)):
             out = x.float() / (self.c_table * factor)
         else:
@@ -1299,8 +1300,9 @@ class _CompressJPEG(nn.Module):
         self.c_quantize = _CQuantize(rounding)
         self.y_quantize = _YQuantize(rounding)
 
-    def forward(self, x: torch.Tensor,
-                factor: torch.Tensor) -> [torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(self,
+                x: torch.Tensor,
+                factor: torch.Tensor) -> [torch.Tensor, torch.Tensor, torch.Tensor]:
         y, cb, cr = self.l1(x * 255)
         components = {"y": y, "cb": cb, "cr": cr}
         for k in components.keys():
@@ -1322,7 +1324,7 @@ class _YDeQuantize(nn.Module):
         super(_YDeQuantize, self).__init__()
         self.y_table = y_table
 
-    def forward(self, x: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, factor: int or float or torch.Tensor) -> torch.Tensor:
         if isinstance(factor, (int, float)):
             out = x * (self.y_table * factor)
         else:
@@ -1338,7 +1340,7 @@ class _CDeQuantize(nn.Module):
         super(_CDeQuantize, self).__init__()
         self.c_table = c_table
 
-    def forward(self, x: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, factor: int or float or torch.Tensor) -> torch.Tensor:
         if isinstance(factor, (int, float)):
             out = x * (self.c_table * factor)
         else:
@@ -1427,24 +1429,25 @@ class _DeCompressJPEG(nn.Module):
         self.de_chroma_subsampling = _DeChromaSubsampling()
         self.ycbcr_to_rgb = _YCbCrToRGB()
 
-    def forward(self, y: torch.Tensor,
+    def forward(self,
+                y: torch.Tensor,
                 cb: torch.Tensor,
                 cr: torch.Tensor,
-                height: int,
-                width: int,
+                image_height: int,
+                image_width: int,
                 factor: int) -> torch.Tensor:
         components = {"y": y, "cb": cb, "cr": cr}
         for k in components.keys():
             if k in ("cb", "cr"):
                 comp = self.c_de_quantize(components[k], factor)
-                height, width = int(height / 2), int(width / 2)
+                height, width = int(image_height / 2), int(image_width / 2)
             else:
                 comp = self.y_de_quantize(components[k], factor)
-                height, width = height, width
+                height, width = image_height, image_width
             comp = self.de_dct(comp)
             components[k] = self.de_block_splitting(comp, height, width)
 
-        out = self.de_chroma_subsampling(components['y'], components['cb'], components['cr'])
+        out = self.de_chroma_subsampling(components["y"], components["cb"], components["cr"])
         out = self.ycbcr_to_rgb(out)
 
         out = torch.min(255 * torch.ones_like(out), torch.max(torch.zeros_like(out), out))
@@ -1463,9 +1466,9 @@ class DiffJPEG(nn.Module):
             rounding = torch.round
 
         self.compress = _CompressJPEG(rounding)
-        self.decompress = _DeCompressJPEG(rounding)
+        self.decompress = _DeCompressJPEG()
 
-    def forward(self, x: torch.Tensor, quality: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, quality: int or float or torch.Tensor) -> torch.Tensor:
         factor = quality
         if isinstance(factor, (int, float)):
             factor = _calculate_quality_factor(factor)
@@ -1482,7 +1485,7 @@ class DiffJPEG(nn.Module):
 
         x = F.pad(x, (0, w_pad, 0, h_pad), mode="constant", value=0)
 
-        y, cb, cr = self.compress(x, factor=factor)
+        y, cb, cr = self.compress(x, factor)
         out = self.decompress(y, cb, cr, (h + h_pad), (w + w_pad), factor)
         out = out[:, :, 0:h, 0:w]
 
