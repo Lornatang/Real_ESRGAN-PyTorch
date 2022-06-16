@@ -222,9 +222,11 @@ def train(model: nn.Module,
 
     """
     # Defining JPEG image manipulation methods
-    jpeg_operation = imgproc.DiffJPEG(differentiable=False).to(config.device, non_blocking=True)
+    jpeg_operation = imgproc.DiffJPEG(False)
+    jpeg_operation = jpeg_operation.to(device=config.device, non_blocking=True)
     # Define image sharpening method
-    usm_sharpener = imgproc.USMSharp().to(config.device, non_blocking=True)
+    usm_sharpener = imgproc.USMSharp(50, 0)
+    usm_sharpener = usm_sharpener.to(device=config.device, non_blocking=True)
 
     # Calculate how many batches of data are in each Epoch
     batches = len(train_prefetcher)
@@ -257,7 +259,7 @@ def train(model: nn.Module,
         sinc_kernel = batch_data["sinc_kernel"].to(device=config.device, non_blocking=True)
 
         # # Sharpen high-resolution images
-        out = usm_sharpener(hr)
+        out = usm_sharpener(hr, 0.5, 10)
 
         # Get original image size
         image_height, image_width = out.size()[2:4]
@@ -265,7 +267,7 @@ def train(model: nn.Module,
         # First degradation process
         # Gaussian blur
         if np.random.uniform() <= config.degradation_process_parameters_dict["first_blur_probability"]:
-            out = imgproc.blur(out, kernel1)
+            out = imgproc.filter2d_torch(out, kernel1)
 
         # Resize
         updown_type = random.choices(["up", "down", "keep"],
@@ -281,14 +283,14 @@ def train(model: nn.Module,
 
         # Noise
         if np.random.uniform() < config.degradation_process_parameters_dict["gaussian_noise_probability1"]:
-            out = imgproc.random_add_gaussian_noise_pt(
+            out = imgproc.random_add_gaussian_noise_torch(
                 image=out,
                 sigma_range=config.degradation_process_parameters_dict["noise_range1"],
                 clip=True,
                 rounds=False,
                 gray_prob=config.degradation_process_parameters_dict["gray_noise_probability1"])
         else:
-            out = imgproc.random_add_poisson_noise_pt(
+            out = imgproc.random_add_poisson_noise_torch(
                 image=out,
                 scale_range=config.degradation_process_parameters_dict["poisson_scale_range1"],
                 gray_prob=config.degradation_process_parameters_dict["gray_noise_probability1"],
@@ -303,7 +305,7 @@ def train(model: nn.Module,
         # Second degradation process
         # Gaussian blur
         if np.random.uniform() < config.degradation_process_parameters_dict["second_blur_probability"]:
-            out = imgproc.blur(out, kernel2)
+            out = imgproc.filter2d_torch(out, kernel2)
 
         # Resize
         updown_type = random.choices(["up", "down", "keep"],
@@ -322,14 +324,14 @@ def train(model: nn.Module,
 
         # Noise
         if np.random.uniform() < config.degradation_process_parameters_dict["gaussian_noise_probability2"]:
-            out = imgproc.random_add_gaussian_noise_pt(
+            out = imgproc.random_add_gaussian_noise_torch(
                 image=out,
                 sigma_range=config.degradation_process_parameters_dict["noise_range2"],
                 clip=True,
                 rounds=False,
                 gray_prob=config.degradation_process_parameters_dict["gray_noise_probability2"])
         else:
-            out = imgproc.random_add_poisson_noise_pt(
+            out = imgproc.random_add_poisson_noise_torch(
                 image=out,
                 scale_range=config.degradation_process_parameters_dict["poisson_scale_range2"],
                 gray_prob=config.degradation_process_parameters_dict["gray_noise_probability2"],
@@ -342,7 +344,7 @@ def train(model: nn.Module,
                                 size=(image_height // config.upscale_factor, image_width // config.upscale_factor),
                                 mode=random.choice(["area", "bilinear", "bicubic"]))
             # Sinc blur
-            out = imgproc.blur(out, sinc_kernel)
+            out = imgproc.filter2d_torch(out, sinc_kernel)
 
             # JPEG
             quality = out.new_zeros(out.size(0)).uniform_(*config.degradation_process_parameters_dict["jpeg_range2"])
@@ -360,7 +362,7 @@ def train(model: nn.Module,
                                 mode=random.choice(["area", "bilinear", "bicubic"]))
 
             # Sinc blur
-            out = imgproc.blur(out, sinc_kernel)
+            out = imgproc.filter2d_torch(out, sinc_kernel)
 
         # Clamp and round
         lr = torch.clamp((out * 255.0).round(), 0, 255) / 255.

@@ -601,6 +601,937 @@ def generate_sinc_kernel(cutoff: float, kernel_size: int, padding: int = 0) -> n
     return sinc_kernel
 
 
+def _generate_gaussian_noise(image: np.ndarray, sigma: float = 10.0, gray_noise: bool = False) -> np.ndarray:
+    """Generate Gaussian noise (OpenCV)
+
+    Args:
+        image (np.ndarray): Input image
+        sigma (float): Noise scale (measured in range 255). Default: 10.0
+        gray_noise (optional, bool): Whether to add grayscale noise. Default: ``False``
+
+    Returns:
+        gaussian_noise (np.array): Gaussian noise
+
+    """
+    if gray_noise:
+        gaussian_noise = np.float32(np.random.randn(*(image.shape[0:2]))) * sigma / 255.
+        gaussian_noise = np.expand_dims(gaussian_noise, axis=2).repeat(3, axis=2)
+    else:
+        gaussian_noise = np.float32(np.random.randn(*image.shape)) * sigma / 255.
+
+    return gaussian_noise
+
+
+def _generate_poisson_noise(image: np.ndarray, scale: float = 1.0, gray_noise: bool = False) -> np.ndarray:
+    """Generate poisson noise (OpenCV)
+
+    Args:
+        image (np.ndarray): Input image
+        scale (optional, float): Noise scale value. Default: 1.0
+        gray_noise (optional, bool): Whether to add grayscale noise. Default: ``False``
+
+    Returns:
+        poisson_noise (np.array): Poisson noise
+
+    """
+    if gray_noise:
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    # Round and clip image for counting vals correctly
+    image = np.clip((image * 255.0).round(), 0, 255) / 255.
+    vals = len(np.unique(image))
+    vals = 2 ** np.ceil(np.log2(vals))
+    out = np.float32(np.random.poisson(image * vals) / float(vals))
+    noise = out - image
+
+    if gray_noise:
+        noise = np.repeat(noise[:, :, np.newaxis], 3, axis=2)
+
+    poisson_noise = noise * scale
+
+    return poisson_noise
+
+
+def _random_generate_gaussian_noise(image: np.ndarray, sigma_range: tuple = (0, 10), gray_prob: int = 0) -> np.ndarray:
+    """Random generate gaussian noise (OpenCV)
+
+    Args:
+        image (np.ndarray): Input image
+        sigma_range (optional, tuple): Noise range. Default: (0, 10)
+        gray_prob (optional, int): Add grayscale noise probability. Default: 0
+
+    Returns:
+        gaussian_noise (np.ndarray): Gaussian noise
+
+    """
+    sigma = np.random.uniform(sigma_range[0], sigma_range[1])
+
+    if np.random.uniform() < gray_prob:
+        gray_noise = True
+    else:
+        gray_noise = False
+
+    gaussian_noise = _generate_gaussian_noise(image, sigma, gray_noise)
+
+    return gaussian_noise
+
+
+def _random_generate_poisson_noise(image: np.ndarray, scale_range: tuple = (0, 1.0), gray_prob: int = 0) -> np.ndarray:
+    """Random generate poisson noise (OpenCV)
+
+    Args:
+        image (np.ndarray): Input image
+        scale_range (optional, tuple): Noise scale range. Default: (0, 1.0)
+        gray_prob (optional, int): Add grayscale noise probability. Default: 0
+
+    Returns:
+        poisson_noise (np.ndarray): Poisson noise
+
+    """
+    scale = np.random.uniform(scale_range[0], scale_range[1])
+
+    if np.random.uniform() < gray_prob:
+        gray_noise = True
+    else:
+        gray_noise = False
+
+    poisson_noise = _generate_poisson_noise(image, scale, gray_noise)
+
+    return poisson_noise
+
+
+def _add_gaussian_noise(image: np.ndarray,
+                        sigma: float = 10.0,
+                        clip: bool = True,
+                        rounds: bool = False,
+                        gray_noise: bool = False):
+    """Add gaussian noise to image (OpenCV)
+
+    Args:
+        image (np.ndarray): Input image
+        sigma (optional, float): Noise scale (measured in range 255). Default: 10.0
+        clip (optional, bool): Whether to clip image pixel. If `True`, clip image pixel to [0, 1] or [0, 255]. Default: ``True``
+        rounds (optional, bool): Gaussian noise rounds scale. Default: ``False``
+        gray_noise (optional, bool): Whether to add grayscale noise. Default: ``False``
+
+    Returns:
+        out (np.ndarray): Add gaussian noise to image
+
+    """
+    noise = _generate_gaussian_noise(image, sigma, gray_noise)
+    out = image + noise
+
+    if clip and rounds:
+        out = np.clip((out * 255.0).round(), 0, 255) / 255.
+    elif clip:
+        out = np.clip(out, 0, 1)
+    elif rounds:
+        out = (out * 255.0).round() / 255.
+
+    return out
+
+
+def _add_poisson_noise(image: np.ndarray,
+                       scale: float = 1.0,
+                       clip: bool = True,
+                       rounds: bool = False,
+                       gray_noise: bool = False):
+    """Add poisson noise to image (OpenCV)
+
+    Args:
+        image (np.ndarray): Input image
+        scale (optional, float): Noise scale value. Default: 1.0
+        clip (optional, bool): Whether to clip image pixel. If `True`, clip image pixel to [0, 1] or [0, 255]. Default: ``True``
+        rounds (optional, bool): Gaussian noise rounds scale. Default: ``False``
+        gray_noise (optional, bool): Whether to add grayscale noise. Default: ``False``
+
+    Returns:
+        out (np.ndarray): Add poisson noise to image
+
+    """
+    noise = _generate_poisson_noise(image, scale, gray_noise)
+    out = image + noise
+
+    if clip and rounds:
+        out = np.clip((out * 255.0).round(), 0, 255) / 255.
+    elif clip:
+        out = np.clip(out, 0, 1)
+    elif rounds:
+        out = (out * 255.0).round() / 255.
+
+    return out
+
+
+def _random_add_gaussian_noise(image: np.ndarray,
+                               sigma_range: tuple = (0, 1.0),
+                               gray_prob: int = 0,
+                               clip: bool = True,
+                               rounds: bool = False) -> np.ndarray:
+    """Random add gaussian noise to image (OpenCV)
+
+    Args:
+        image (np.ndarray): Input image
+        sigma_range (optional, tuple): Noise range. Default: (0, 1.0)
+        gray_prob (optional, int): Add grayscale noise probability. Default: 0
+        clip (optional, bool): Whether to clip image pixel. If `True`, clip image pixel to [0, 1] or [0, 255]. Default: ``True``
+        rounds (optional, bool): Noise rounds scale. Default: ``False``
+
+    Returns:
+        out (np.ndarray): Add gaussian noise to image
+
+    """
+    noise = _random_generate_gaussian_noise(image, sigma_range, gray_prob)
+    out = image + noise
+
+    if clip and rounds:
+        out = np.clip((out * 255.0).round(), 0, 255) / 255.
+    elif clip:
+        out = np.clip(out, 0, 1)
+    elif rounds:
+        out = (out * 255.0).round() / 255.
+
+    return out
+
+
+def _random_add_poisson_noise(image: np.ndarray,
+                              scale_range: tuple = (0, 1.0),
+                              gray_prob: int = 0,
+                              clip: bool = True,
+                              rounds: bool = False) -> np.ndarray:
+    """Random add gaussian noise to image (OpenCV)
+
+    Args:
+        image (np.ndarray): Input image
+        scale_range (optional, tuple): Noise scale range. Default: (0, 1.0)
+        gray_prob (optional, int): Add grayscale noise probability. Default: 0
+        clip (optional, bool): Whether to clip image pixel. If `True`, clip image pixel to [0, 1] or [0, 255]. Default: ``True``
+        rounds (optional, bool): Noise rounds scale. Default: ``False``
+
+    Returns:
+        out (np.ndarray): Add poisson noise to image
+
+    """
+    noise = _random_generate_poisson_noise(image, scale_range, gray_prob)
+    out = image + noise
+
+    if clip and rounds:
+        out = np.clip((out * 255.0).round(), 0, 255) / 255.
+    elif clip:
+        out = np.clip(out, 0, 1)
+    elif rounds:
+        out = (out * 255.0).round() / 255.
+
+    return out
+
+
+def _generate_gaussian_noise_torch(image: torch.Tensor,
+                                   sigma: float = 10.0,
+                                   gray_noise: torch.Tensor = 0) -> torch.Tensor:
+    """Generate Gaussian noise (PyTorch)
+
+    Args:
+        image (torch.Tensor): Input image
+        sigma (float): Noise scale (measured in range 255). Default: 10.0
+        gray_noise (optional, torch.Tensor): Whether to add grayscale noise. Default: 0
+
+    Returns:
+        gaussian_noise (torch.Tensor): Gaussian noise
+
+    """
+    b, _, h, w = image.size()
+
+    if not isinstance(sigma, (float, int)):
+        sigma = sigma.view(image.size(0), 1, 1, 1)
+    if isinstance(gray_noise, (float, int)):
+        cal_gray_noise = gray_noise > 0
+    else:
+        gray_noise = gray_noise.view(b, 1, 1, 1)
+        cal_gray_noise = torch.sum(gray_noise) > 0
+
+    if cal_gray_noise:
+        noise_gray = torch.randn(*image.size()[2:4], dtype=image.dtype, device=image.device) * sigma / 255.
+        noise_gray = noise_gray.view(b, 1, h, w)
+
+    # always calculate color noise
+    noise = torch.randn(*image.size(), dtype=image.dtype, device=image.device) * sigma / 255.
+
+    if cal_gray_noise:
+        noise = noise * (1 - gray_noise) + noise_gray * gray_noise
+
+    return noise
+
+
+def _generate_poisson_noise_torch(image: torch.Tensor,
+                                  scale: float = 1.0,
+                                  gray_noise: torch.Tensor = 0) -> torch.Tensor:
+    """Generate poisson noise (PyTorch)
+
+    Args:
+        image (torch.Tensor): Input image
+        scale (optional, float): Noise scale value. Default: 1.0
+        gray_noise (optional, torch.Tensor): Whether to add grayscale noise. Default: 0
+
+    Returns:
+        poisson_noise (torch.Tensor): Poisson noise
+
+    """
+    b, _, h, w = image.size()
+
+    if isinstance(gray_noise, (float, int)):
+        cal_gray_noise = gray_noise > 0
+    else:
+        gray_noise = gray_noise.view(b, 1, 1, 1)
+        cal_gray_noise = torch.sum(gray_noise) > 0
+    if cal_gray_noise:
+        img_gray = rgb_to_grayscale(image, num_output_channels=1)
+        # round and clip image for counting vals correctly
+        img_gray = torch.clamp((img_gray * 255.0).round(), 0, 255) / 255.
+        # use for-loop to get the unique values for each sample
+        vals_list = [len(torch.unique(img_gray[i, :, :, :])) for i in range(b)]
+        vals_list = [2 ** np.ceil(np.log2(vals)) for vals in vals_list]
+        vals = img_gray.new_tensor(vals_list).view(b, 1, 1, 1)
+        out = torch.poisson(img_gray * vals) / vals
+        noise_gray = out - img_gray
+        noise_gray = noise_gray.expand(b, 3, h, w)
+
+    # always calculate color noise
+    # round and clip image for counting vals correctly
+    image = torch.clamp((image * 255.0).round(), 0, 255) / 255.
+    # use for-loop to get the unique values for each sample
+    vals_list = [len(torch.unique(image[i, :, :, :])) for i in range(b)]
+    vals_list = [2 ** np.ceil(np.log2(vals)) for vals in vals_list]
+    vals = image.new_tensor(vals_list).view(b, 1, 1, 1)
+    out = torch.poisson(image * vals) / vals
+    noise = out - image
+
+    if cal_gray_noise:
+        noise = noise * (1 - gray_noise) + noise_gray * gray_noise
+    if not isinstance(scale, (float, int)):
+        scale = scale.view(b, 1, 1, 1)
+
+    poisson_noise = noise * scale
+
+    return poisson_noise
+
+
+def _random_generate_gaussian_noise_torch(image: torch.Tensor,
+                                          sigma_range: tuple = (0, 10),
+                                          gray_prob: torch.Tensor = 0) -> torch.Tensor:
+    """Random generate gaussian noise (PyTorch)
+
+    Args:
+        image (torch.Tensor): Input image
+        sigma_range (optional, tuple): Noise range. Default: (0, 10)
+        gray_prob (optional, int): Add grayscale noise probability. Default: 0
+
+    Returns:
+        gaussian_noise (torch.Tensor): Gaussian noise
+
+    """
+    sigma = torch.rand(image.size(0),
+                       dtype=image.dtype,
+                       device=image.device) * (sigma_range[1] - sigma_range[0]) + sigma_range[0]
+    gray_noise = torch.rand(image.size(0), dtype=image.dtype, device=image.device)
+    gray_noise = (gray_noise < gray_prob).float()
+    gaussian_noise = _generate_gaussian_noise_torch(image, sigma, gray_noise)
+
+    return gaussian_noise
+
+
+def _random_generate_poisson_noise_torch(image: torch.Tensor,
+                                         scale_range: tuple = (0, 1.0),
+                                         gray_prob: torch.Tensor = 0) -> torch.Tensor:
+    """Random generate poisson noise (PyTorch)
+
+    Args:
+        image (torch.Tensor): Input image
+        scale_range (optional, tuple): Noise scale range. Default: (0, 1.0)
+        gray_prob (optional, int): Add grayscale noise probability. Default: 0
+
+    Returns:
+        poisson_noise (torch.Tensor): Poisson noise
+
+    """
+    scale = torch.rand(image.size(0),
+                       dtype=image.dtype,
+                       device=image.device) * (scale_range[1] - scale_range[0]) + scale_range[0]
+    gray_noise = torch.rand(image.size(0), dtype=image.dtype, device=image.device)
+    gray_noise = (gray_noise < gray_prob).float()
+    poisson_noise = _generate_poisson_noise_torch(image, scale, gray_noise)
+
+    return poisson_noise
+
+
+def _add_gaussian_noise_torch(image: torch.Tensor,
+                              sigma: float = 10.0,
+                              clip: bool = True,
+                              rounds: bool = False,
+                              gray_noise: torch.Tensor = 0):
+    """Add gaussian noise to image (PyTorch)
+
+    Args:
+        image (torch.Tensor): Input image
+        sigma (optional, float): Noise scale (measured in range 255). Default: 10.0
+        clip (optional, bool): Whether to clip image pixel. If `True`, clip image pixel to [0, 1] or [0, 255]. Default: ``True``
+        rounds (optional, bool): Gaussian noise rounds scale. Default: ``False``
+        gray_noise (optional, torch.Tensor): Whether to add grayscale noise. Default: 0
+
+    Returns:
+        out (torch.Tensor): Add gaussian noise to image
+
+    """
+    noise = _generate_gaussian_noise_torch(image, sigma, gray_noise)
+    out = image + noise
+
+    if clip and rounds:
+        out = torch.clamp((out * 255.0).round(), 0, 255) / 255.
+    elif clip:
+        out = torch.clamp(out, 0, 1)
+    elif rounds:
+        out = (out * 255.0).round() / 255.
+
+    return out
+
+
+def _add_poisson_noise_torch(image: torch.Tensor,
+                             scale: float = 1.0,
+                             clip: bool = True,
+                             rounds: bool = False,
+                             gray_noise: torch.Tensor = 0) -> torch.Tensor:
+    """Add poisson noise to image (PyTorch)
+
+    Args:
+        image (torch.Tensor): Input image
+        scale (optional, float): Noise scale value. Default: 1.0
+        clip (optional, bool): Whether to clip image pixel. If `True`, clip image pixel to [0, 1] or [0, 255]. Default: ``True``
+        rounds (optional, bool): Gaussian noise rounds scale. Default: ``False``
+        gray_noise (optional, torch.Tensor): Whether to add grayscale noise. Default: 0
+
+    Returns:
+        out (torch.Tensor): Add poisson noise to image
+
+    """
+    noise = _generate_poisson_noise_torch(image, scale, gray_noise)
+    out = image + noise
+
+    if clip and rounds:
+        out = torch.clamp((out * 255.0).round(), 0, 255) / 255.
+    elif clip:
+        out = torch.clamp(out, 0, 1)
+    elif rounds:
+        out = (out * 255.0).round() / 255.
+
+    return out
+
+
+def random_add_gaussian_noise_torch(image: torch.Tensor,
+                                    sigma_range: tuple = (0, 1.0),
+                                    gray_prob: int = 0,
+                                    clip: bool = True,
+                                    rounds: bool = False) -> torch.Tensor:
+    """Random add gaussian noise to image (PyTorch)
+
+    Args:
+        image (torch.Tensor): Input image
+        sigma_range (optional, tuple): Noise range. Default: (0, 1.0)
+        gray_prob (optional, int): Add grayscale noise probability. Default: 0
+        clip (optional, bool): Whether to clip image pixel. If `True`, clip image pixel to [0, 1] or [0, 255]. Default: ``True``
+        rounds (optional, bool): Noise rounds scale. Default: ``False``
+
+    Returns:
+        out (torch.Tensor): Add gaussian noise to image
+
+    """
+    noise = _random_generate_gaussian_noise_torch(image, sigma_range, gray_prob)
+    out = image + noise
+
+    if clip and rounds:
+        out = torch.clamp((out * 255.0).round(), 0, 255) / 255.
+    elif clip:
+        out = torch.clamp(out, 0, 1)
+    elif rounds:
+        out = (out * 255.0).round() / 255.
+
+    return out
+
+
+def random_add_poisson_noise_torch(image: torch.Tensor,
+                                   scale_range: tuple = (0, 1.0),
+                                   gray_prob: int = 0,
+                                   clip: bool = True,
+                                   rounds: bool = False) -> torch.Tensor:
+    """Random add gaussian noise to image (PyTorch)
+
+    Args:
+        image (torch.Tensor): Input image
+        scale_range (optional, tuple): Noise scale range. Default: (0, 1.0)
+        gray_prob (optional, int): Add grayscale noise probability. Default: 0
+        clip (optional, bool): Whether to clip image pixel. If `True`, clip image pixel to [0, 1] or [0, 255]. Default: ``True``
+        rounds (optional, bool): Noise rounds scale. Default: ``False``
+
+    Returns:
+        out (torch.Tensor): Add poisson noise to image
+
+    """
+    noise = _random_generate_poisson_noise_torch(image, scale_range, gray_prob)
+    out = image + noise
+    if clip and rounds:
+        out = torch.clamp((out * 255.0).round(), 0, 255) / 255.
+    elif clip:
+        out = torch.clamp(out, 0, 1)
+    elif rounds:
+        out = (out * 255.0).round() / 255.
+    return out
+
+
+def filter2d_torch(image: torch.Tensor, kernel: torch.Tensor) -> torch.Tensor:
+    """PyTorch implements `cv2.filter2D()`
+
+    Args:
+        image (torch.Tensor): Image data, PyTorch data stream format
+        kernel (torch.Tensor): Blur kernel data, PyTorch data stream format
+
+    Returns:
+        out (torch.Tensor): Image processed with a specific filter on the image
+
+    """
+    k = kernel.size(-1)
+    b, c, h, w = image.size()
+
+    if k % 2 == 1:
+        image = F.pad(image, (k // 2, k // 2, k // 2, k // 2), mode="reflect")
+    else:
+        raise ValueError("Wrong kernel size.")
+
+    ph, pw = image.size()[-2:]
+
+    if kernel.size(0) == 1:
+        # apply the same kernel to all batch images
+        image = image.view(b * c, 1, ph, pw)
+        kernel = kernel.view(1, 1, k, k)
+        return F.conv2d(image, kernel, padding=0).view(b, c, h, w)
+    else:
+        image = image.view(1, b * c, ph, pw)
+        kernel = kernel.view(b, 1, k, k).repeat(1, c, 1, 1).view(b * c, 1, k, k)
+
+    out = F.conv2d(image, kernel, groups=b * c).view(b, c, h, w)
+
+    return out
+
+
+def _calculate_quality_factor(quality: int) -> float:
+    """Calculate factor corresponding to quality
+
+    Args:
+        quality (float): Quality for jpeg compression
+
+    Returns:
+        quality_factor (float): Compression factor value
+
+    """
+    if quality < 50:
+        quality = 5000. / quality
+    else:
+        quality = 200. - quality * 2
+
+    quality_factor = quality / 100.
+
+    return quality_factor
+
+
+def _add_jpeg_compression(image: np.ndarray, quality: int) -> np.ndarray:
+    """Add JPEG compression (OpenCV)
+
+    Args:
+        image (np.ndarray): Input image
+        quality (float): JPEG compression quality
+
+    Returns:
+        jpeg_image (np.ndarray): JPEG processed image
+
+    """
+    image = np.clip(image, 0, 1)
+    encode_params = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
+    _, encode_image = cv2.imencode(".jpg", image * 255., encode_params)
+    jpeg_image = np.float32(cv2.imdecode(encode_image, 1)) / 255.
+
+    return jpeg_image
+
+
+def _random_add_jpg_compression(image: np.ndarray, quality_range: tuple) -> np.ndarray:
+    """Random add JPEG compression (OpenCV)
+
+    Args:
+        image (np.ndarray): Input image
+        quality_range (tuple): JPEG compression quality range
+
+    Returns:
+        image (np.ndarray): JPEG processed image
+
+    """
+    quality = np.random.uniform(quality_range[0], quality_range[1])
+    jpeg_image = _add_jpeg_compression(image, quality)
+
+    return jpeg_image
+
+
+def _jpeg_diff_round(x: torch.float) -> torch.float:
+    """JPEG differentiable
+
+    Args:
+        x (torch.float): None.
+
+    Returns:
+        jpeg_differentiable (torch.float): None
+
+    """
+    jpeg_differentiable = torch.round(x) + (x - torch.round(x)) ** 3
+
+    return jpeg_differentiable
+
+
+class _RGBToYCbCr(nn.Module):
+    def __init__(self) -> None:
+        super(_RGBToYCbCr, self).__init__()
+        matrix = np.array([[0.299, 0.587, 0.114],
+                           [-0.168736, -0.331264, 0.5],
+                           [0.5, -0.418688, -0.081312]], dtype=np.float32).T
+        self.shift = nn.Parameter(torch.tensor([0., 128., 128.]))
+        self.matrix = nn.Parameter(torch.from_numpy(matrix))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.permute(0, 2, 3, 1)
+        out = torch.tensordot(x, self.matrix, dims=1) + self.shift
+        out = out.view(x.shape)
+
+        return out
+
+
+class _ChromaSubsampling(nn.Module):
+    def __init__(self) -> None:
+        super(_ChromaSubsampling, self).__init__()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        image = x.permute(0, 3, 1, 2).clone()
+        cb = F.avg_pool2d(image[:, 1, :, :].unsqueeze(1), (2, 2), (2, 2), count_include_pad=False)
+        cr = F.avg_pool2d(image[:, 2, :, :].unsqueeze(1), (2, 2), (2, 2), count_include_pad=False)
+        cb = cb.permute(0, 2, 3, 1)
+        cr = cr.permute(0, 2, 3, 1)
+        out = x[:, :, :, 0], cb.squeeze(3), cr.squeeze(3)
+
+        return out
+
+
+class _BlockSplitting(nn.Module):
+    def __init__(self) -> None:
+        super(_BlockSplitting, self).__init__()
+        self.k = 8
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        height, _ = x.shape[1:3]
+        batch_size = x.shape[0]
+        x_reshaped = x.view(batch_size, height // self.k, self.k, -1, self.k)
+        x_transposed = x_reshaped.permute(0, 1, 3, 2, 4)
+        out = x_transposed.contiguous().view(batch_size, -1, self.k, self.k)
+
+        return out
+
+
+class _DCT8x8(nn.Module):
+    def __init__(self) -> None:
+        super(_DCT8x8, self).__init__()
+        tensor = np.zeros((8, 8, 8, 8), dtype=np.float32)
+        for x, y, u, v in itertools.product(range(8), repeat=4):
+            tensor[x, y, u, v] = np.cos((2 * x + 1) * u * np.pi / 16) * np.cos((2 * y + 1) * v * np.pi / 16)
+        alpha = np.array([1. / np.sqrt(2)] + [1] * 7)
+        self.tensor = nn.Parameter(torch.from_numpy(tensor).float())
+        self.scale = nn.Parameter(torch.from_numpy(np.outer(alpha, alpha) * 0.25).float())
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x - 128
+        out = self.scale * torch.tensordot(x, self.tensor, dims=2)
+        out.view(x.shape)
+
+        return out
+
+
+class _YQuantize(nn.Module):
+    def __init__(self, rounding: torch.round or _jpeg_diff_round) -> None:
+        super(_YQuantize, self).__init__()
+        self.rounding = rounding
+        self.y_table = y_table
+
+    def forward(self, x: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
+        if isinstance(factor, (int, float)):
+            out = x.float() / (self.y_table * factor)
+        else:
+            b = factor.size(0)
+            table = self.y_table.expand(b, 1, 8, 8) * factor.view(b, 1, 1, 1)
+            out = x.float() / table
+        out = self.rounding(out)
+
+        return out
+
+
+class _CQuantize(nn.Module):
+    def __init__(self, rounding: torch.round or _jpeg_diff_round) -> None:
+        super(_CQuantize, self).__init__()
+        self.rounding = rounding
+        self.c_table = c_table
+
+    def forward(self, x: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
+        if isinstance(factor, (int, float)):
+            out = x.float() / (self.c_table * factor)
+        else:
+            b = factor.size(0)
+            table = self.c_table.expand(b, 1, 8, 8) * factor.view(b, 1, 1, 1)
+            out = x.float() / table
+        out = self.rounding(out)
+
+        return out
+
+
+class _CompressJPEG(nn.Module):
+    def __init__(self, rounding: torch.round or _jpeg_diff_round) -> None:
+        super(_CompressJPEG, self).__init__()
+        self.l1 = nn.Sequential(_RGBToYCbCr(), _ChromaSubsampling())
+        self.l2 = nn.Sequential(_BlockSplitting(), _DCT8x8())
+        self.c_quantize = _CQuantize(rounding)
+        self.y_quantize = _YQuantize(rounding)
+
+    def forward(self, x: torch.Tensor,
+                factor: torch.Tensor) -> [torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        y, cb, cr = self.l1(x * 255)
+        components = {"y": y, "cb": cb, "cr": cr}
+        for k in components.keys():
+            comp = self.l2(components[k])
+            if k in ("cb", "cr"):
+                comp = self.c_quantize(comp, factor)
+            else:
+                comp = self.y_quantize(comp, factor)
+
+            components[k] = comp
+
+        out = components["y"], components["cb"], components["cr"]
+
+        return out
+
+
+class _YDeQuantize(nn.Module):
+    def __init__(self) -> None:
+        super(_YDeQuantize, self).__init__()
+        self.y_table = y_table
+
+    def forward(self, x: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
+        if isinstance(factor, (int, float)):
+            out = x * (self.y_table * factor)
+        else:
+            b = factor.size(0)
+            table = self.y_table.expand(b, 1, 8, 8) * factor.view(b, 1, 1, 1)
+            out = x * table
+
+        return out
+
+
+class _CDeQuantize(nn.Module):
+    def __init__(self) -> None:
+        super(_CDeQuantize, self).__init__()
+        self.c_table = c_table
+
+    def forward(self, x: torch.Tensor, factor: torch.Tensor) -> torch.Tensor:
+        if isinstance(factor, (int, float)):
+            out = x * (self.c_table * factor)
+        else:
+            b = factor.size(0)
+            table = self.c_table.expand(b, 1, 8, 8) * factor.view(b, 1, 1, 1)
+            out = x * table
+
+        return out
+
+
+class _DeDCT8x8(nn.Module):
+    def __init__(self) -> None:
+        super(_DeDCT8x8, self).__init__()
+        alpha = np.array([1. / np.sqrt(2)] + [1] * 7)
+        self.alpha = nn.Parameter(torch.from_numpy(np.outer(alpha, alpha)).float())
+        tensor = np.zeros((8, 8, 8, 8), dtype=np.float32)
+        for x, y, u, v in itertools.product(range(8), repeat=4):
+            tensor[x, y, u, v] = np.cos((2 * u + 1) * x * np.pi / 16) * np.cos((2 * v + 1) * y * np.pi / 16)
+        self.tensor = nn.Parameter(torch.from_numpy(tensor).float())
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x * self.alpha
+        out = 0.25 * torch.tensordot(x, self.tensor, dims=2) + 128
+        out.view(x.shape)
+
+        return out
+
+
+class _DeBlockSplitting(nn.Module):
+    def __init__(self) -> None:
+        super(_DeBlockSplitting, self).__init__()
+
+    def forward(self, x: torch.Tensor, height: int, width: int) -> torch.Tensor:
+        k = 8
+        batch_size = x.shape[0]
+        x_reshaped = x.view(batch_size, height // k, width // k, k, k)
+        x_transposed = x_reshaped.permute(0, 1, 3, 2, 4)
+        out = x_transposed.contiguous().view(batch_size, height, width)
+
+        return out
+
+
+class _DeChromaSubsampling(nn.Module):
+    def __init__(self) -> None:
+        super(_DeChromaSubsampling, self).__init__()
+
+    def forward(self, y: torch.Tensor, cb: torch.Tensor, cr: torch.Tensor) -> torch.Tensor:
+        def repeat(x, k=2):
+            height, width = x.shape[1:3]
+            x = x.unsqueeze(-1)
+            x = x.repeat(1, 1, k, k)
+            x = x.view(-1, height * k, width * k)
+            return x
+
+        cb = repeat(cb)
+        cr = repeat(cr)
+
+        out = torch.cat([y.unsqueeze(3), cb.unsqueeze(3), cr.unsqueeze(3)], dim=3)
+
+        return out
+
+
+class _YCbCrToRGB(nn.Module):
+    def __init__(self) -> None:
+        super(_YCbCrToRGB, self).__init__()
+        matrix = np.array([[1., 0., 1.402],
+                           [1, -0.344136, -0.714136],
+                           [1, 1.772, 0]], dtype=np.float32).T
+        self.shift = nn.Parameter(torch.tensor([0, -128., -128.]))
+        self.matrix = nn.Parameter(torch.from_numpy(matrix))
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        out = torch.tensordot(x + self.shift, self.matrix, dims=1)
+        out = out.view(x.shape).permute(0, 3, 1, 2)
+
+        return out
+
+
+class _DeCompressJPEG(nn.Module):
+    def __init__(self) -> None:
+        super(_DeCompressJPEG, self).__init__()
+        self.c_de_quantize = _CDeQuantize()
+        self.y_de_quantize = _YDeQuantize()
+        self.de_dct = _DeDCT8x8()
+        self.de_block_splitting = _DeBlockSplitting()
+        self.de_chroma_subsampling = _DeChromaSubsampling()
+        self.ycbcr_to_rgb = _YCbCrToRGB()
+
+    def forward(self, y: torch.Tensor,
+                cb: torch.Tensor,
+                cr: torch.Tensor,
+                height: int,
+                width: int,
+                factor: int) -> torch.Tensor:
+        components = {"y": y, "cb": cb, "cr": cr}
+        for k in components.keys():
+            if k in ("cb", "cr"):
+                comp = self.c_de_quantize(components[k], factor)
+                height, width = int(height / 2), int(width / 2)
+            else:
+                comp = self.y_de_quantize(components[k], factor)
+                height, width = height, width
+            comp = self.de_dct(comp)
+            components[k] = self.de_block_splitting(comp, height, width)
+
+        out = self.de_chroma_subsampling(components['y'], components['cb'], components['cr'])
+        out = self.ycbcr_to_rgb(out)
+
+        out = torch.min(255 * torch.ones_like(out), torch.max(torch.zeros_like(out), out))
+
+        out /= 255
+
+        return out
+
+
+class DiffJPEG(nn.Module):
+    def __init__(self, differentiable: bool) -> None:
+        super(DiffJPEG, self).__init__()
+        if differentiable:
+            rounding = _jpeg_diff_round
+        else:
+            rounding = torch.round
+
+        self.compress = _CompressJPEG(rounding)
+        self.decompress = _DeCompressJPEG(rounding)
+
+    def forward(self, x: torch.Tensor, quality: torch.Tensor) -> torch.Tensor:
+        factor = quality
+        if isinstance(factor, (int, float)):
+            factor = _calculate_quality_factor(factor)
+        else:
+            for i in range(factor.size(0)):
+                factor[i] = _calculate_quality_factor(factor[i])
+        h, w = x.size()[-2:]
+        h_pad, w_pad = 0, 0
+
+        if h % 16 != 0:
+            h_pad = 16 - h % 16
+        if w % 16 != 0:
+            w_pad = 16 - w % 16
+
+        x = F.pad(x, (0, w_pad, 0, h_pad), mode="constant", value=0)
+
+        y, cb, cr = self.compress(x, factor=factor)
+        out = self.decompress(y, cb, cr, (h + h_pad), (w + w_pad), factor)
+        out = out[:, :, 0:h, 0:w]
+
+        return out
+
+
+def usm_sharp(image: np.ndarray, weight: float, radius: int, threshold: int) -> np.ndarray:
+    if radius % 2 == 0:
+        radius += 1
+
+    blur = cv2.GaussianBlur(image, (radius, radius), 0)
+    residual = image - blur
+    mask = np.abs(residual) * 255 > threshold
+    mask = mask.astype("float32")
+    soft_mask = cv2.GaussianBlur(mask, (radius, radius), 0)
+
+    out = image + weight * residual
+    out = np.clip(out, 0, 1)
+    out = soft_mask * out + (1 - soft_mask) * image
+
+    return out
+
+
+class USMSharp(nn.Module):
+
+    def __init__(self, radius: int, sigma: int) -> None:
+        super(USMSharp, self).__init__()
+        if radius % 2 == 0:
+            radius += 1
+
+        self.radius = radius
+        kernel = cv2.getGaussianKernel(radius, sigma)
+        kernel = torch.FloatTensor(np.dot(kernel, kernel.transpose())).unsqueeze_(0)
+        self.register_buffer("kernel", kernel)
+
+    def forward(self, x, weight: float, threshold: int) -> torch.Tensor:
+        usm_blur = filter2d_torch(x, self.kernel)
+        residual = x - usm_blur
+
+        mask = torch.abs(residual) * 255 > threshold
+        mask = mask.float()
+        soft_mask = filter2d_torch(mask, self.kernel)
+        out = x + weight * residual
+        out = torch.clip(out, 0, 1)
+        out = soft_mask * out + (1 - soft_mask) * x
+
+        return out
+
+
 def image_to_tensor(image: np.ndarray, range_norm: bool, half: bool) -> torch.Tensor:
     """Convert the image data type to the Tensor (NCWH) data type supported by PyTorch
 
@@ -1063,911 +1994,3 @@ def random_vertically_flip(image: np.ndarray, p: float) -> np.ndarray:
         vertically_flip_image = image
 
     return vertically_flip_image
-
-
-# Implementation reference `https://dsp.stackexchange.com/questions/58301/2-d-circularly-symmetric-low-pass-filter`
-def generate_gaussian_noise(image, sigma=10, gray_noise=False):
-    """Generate Gaussian noise
-
-    Args:
-        image (np.array): Input image
-        sigma (float): Noise scale (measured in range 255). Default: 10.
-        gray_noise (bool): Whether to add grayscale noise. Default: ``False``
-
-    Returns:
-        gaussian_noise (np.array): Gaussian_noise
-
-    """
-    if gray_noise:
-        gaussian_noise = np.float32(np.random.randn(*(image.shape[0:2]))) * sigma / 255.
-        gaussian_noise = np.expand_dims(gaussian_noise, axis=2).repeat(3, axis=2)
-    else:
-        gaussian_noise = np.float32(np.random.randn(*image.shape)) * sigma / 255.
-
-    return gaussian_noise
-
-
-# Implementation reference `https://dsp.stackexchange.com/questions/58301/2-d-circularly-symmetric-low-pass-filter`
-def add_gaussian_noise(image: np.ndarray, sigma=10, clip=True, rounds=False, gray_noise=False):
-    """Add Gaussian noise
-
-    Args:
-        image (np.ndarray): Input image
-        sigma (float): Noise scale (measured in range 255). Default: 10.
-        clip (bool): Whether to clip image.If `True`, clip image pixel to [0, 1] or [0, 255]. Default: True
-        rounds (bool):Default: False
-        gray_noise (bool):Default: False
-
-    Returns:
-        gaussian_noise (np.array): Gaussian noise
-
-    """
-    noise = generate_gaussian_noise(image, sigma, gray_noise)
-    out = image + noise
-
-    if clip and rounds:
-        out = np.clip((out * 255.0).round(), 0, 255) / 255.
-    elif clip:
-        out = np.clip(out, 0, 1)
-    elif rounds:
-        out = (out * 255.0).round() / 255.
-
-    return out
-
-
-# Implementation reference `https://dsp.stackexchange.com/questions/58301/2-d-circularly-symmetric-low-pass-filter`
-def generate_gaussian_noise_pt(image: torch.Tensor, sigma: float = 10, gray_noise=0):
-    """Add Gaussian noise (PyTorch version)
-
-    Args:
-        image (torch.Tensor): Shape (b, c, h, w), range[0, 1], float32.
-        sigma (float): Default: 10.
-        gray_noise (float): Default: 0
-
-    Returns:
-        gaussian_noise (torch.Tensor): Gaussian noise
-
-    """
-    b, _, h, w = image.size()
-
-    if not isinstance(sigma, (float, int)):
-        sigma = sigma.view(image.size(0), 1, 1, 1)
-    if isinstance(gray_noise, (float, int)):
-        cal_gray_noise = gray_noise > 0
-    else:
-        gray_noise = gray_noise.view(b, 1, 1, 1)
-        cal_gray_noise = torch.sum(gray_noise) > 0
-
-    if cal_gray_noise:
-        noise_gray = torch.randn(*image.size()[2:4], dtype=image.dtype, device=image.device) * sigma / 255.
-        noise_gray = noise_gray.view(b, 1, h, w)
-
-    # always calculate color noise
-    noise = torch.randn(*image.size(), dtype=image.dtype, device=image.device) * sigma / 255.
-
-    if cal_gray_noise:
-        noise = noise * (1 - gray_noise) + noise_gray * gray_noise
-
-    return noise
-
-
-# Implementation reference `https://dsp.stackexchange.com/questions/58301/2-d-circularly-symmetric-low-pass-filter`
-def add_gaussian_noise_pt(image, sigma=10, gray_noise=0, clip=True, rounds=False):
-    """Add Gaussian noise (PyTorch version)
-
-    Args:
-        image (Tensor): Shape (b, c, h, w), range[0, 1], float32.
-        scale (float | Tensor): Noise scale. Default: 1.0.
-
-    Returns:
-        (Tensor): Returned noisy image, shape (b, c, h, w), range[0, 1],
-            float32.
-    """
-    noise = generate_gaussian_noise_pt(image, sigma, gray_noise)
-    out = image + noise
-
-    if clip and rounds:
-        out = torch.clamp((out * 255.0).round(), 0, 255) / 255.
-    elif clip:
-        out = torch.clamp(out, 0, 1)
-    elif rounds:
-        out = (out * 255.0).round() / 255.
-
-    return out
-
-
-# Implementation reference `https://dsp.stackexchange.com/questions/58301/2-d-circularly-symmetric-low-pass-filter`
-def random_generate_gaussian_noise(image, sigma_range=(0, 10), gray_prob=0):
-    sigma = np.random.uniform(sigma_range[0], sigma_range[1])
-    if np.random.uniform() < gray_prob:
-        gray_noise = True
-    else:
-        gray_noise = False
-
-    gaussian_noise = generate_gaussian_noise(image, sigma, gray_noise)
-
-    return gaussian_noise
-
-
-# Implementation reference `https://dsp.stackexchange.com/questions/58301/2-d-circularly-symmetric-low-pass-filter`
-def random_add_gaussian_noise(image, sigma_range=(0, 1.0), gray_prob=0, clip=True, rounds=False):
-    noise = random_generate_gaussian_noise(image, sigma_range, gray_prob)
-    out = image + noise
-
-    if clip and rounds:
-        out = np.clip((out * 255.0).round(), 0, 255) / 255.
-    elif clip:
-        out = np.clip(out, 0, 1)
-    elif rounds:
-        out = (out * 255.0).round() / 255.
-
-    return out
-
-
-# Implementation reference `https://dsp.stackexchange.com/questions/58301/2-d-circularly-symmetric-low-pass-filter`
-def random_generate_gaussian_noise_pt(image, sigma_range=(0, 10), gray_prob=0):
-    sigma = torch.rand(image.size(0), dtype=image.dtype, device=image.device) * (sigma_range[1] - sigma_range[0]) + \
-            sigma_range[0]
-    gray_noise = torch.rand(image.size(0), dtype=image.dtype, device=image.device)
-    gray_noise = (gray_noise < gray_prob).float()
-    gaussian_noise = generate_gaussian_noise_pt(image, sigma, gray_noise)
-
-    return gaussian_noise
-
-
-# Implementation reference `https://dsp.stackexchange.com/questions/58301/2-d-circularly-symmetric-low-pass-filter`
-def random_add_gaussian_noise_pt(image, sigma_range=(0, 1.0), gray_prob=0, clip=True, rounds=False):
-    noise = random_generate_gaussian_noise_pt(image, sigma_range, gray_prob)
-    out = image + noise
-
-    if clip and rounds:
-        out = torch.clamp((out * 255.0).round(), 0, 255) / 255.
-    elif clip:
-        out = torch.clamp(out, 0, 1)
-    elif rounds:
-        out = (out * 255.0).round() / 255.
-
-    return out
-
-
-# Implementation reference `https://github.com/scikit-image/scikit-image/blob/main/skimage/util/noise.py#L37-L219`
-def generate_poisson_noise(image, scale=1.0, gray_noise=False):
-    """Generate poisson noise
-
-    Args:
-        image (Numpy array): Input image, shape (h, w, c), range [0, 1], float32.
-        scale (float): Noise scale. Default: 1.0.
-        gray_noise (bool): Whether generate gray noise. Default: False.
-
-    Returns:
-        (Numpy array): Returned noisy image, shape (h, w, c), range[0, 1],
-            float32
-
-    """
-    if gray_noise:
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-    # round and clip image for counting vals correctly
-    image = np.clip((image * 255.0).round(), 0, 255) / 255.
-    vals = len(np.unique(image))
-    vals = 2 ** np.ceil(np.log2(vals))
-    out = np.float32(np.random.poisson(image * vals) / float(vals))
-    noise = out - image
-
-    if gray_noise:
-        noise = np.repeat(noise[:, :, np.newaxis], 3, axis=2)
-
-    poisson_noise = noise * scale
-
-    return poisson_noise
-
-
-# Implementation reference `https://github.com/scikit-image/scikit-image/blob/main/skimage/util/noise.py#L37-L219`
-def add_poisson_noise(image, scale=1.0, clip=True, rounds=False, gray_noise=False):
-    """Add poisson noise.
-
-    Args:
-        image (Numpy array): Input image, shape (h, w, c), range [0, 1], float32.
-        scale (float): Noise scale. Default: 1.0.
-        gray_noise (bool): Whether generate gray noise. Default: False.
-
-    Returns:
-        (Numpy array): Returned noisy image, shape (h, w, c), range[0, 1],
-            float32.
-
-    """
-    noise = generate_poisson_noise(image, scale, gray_noise)
-    out = image + noise
-
-    if clip and rounds:
-        out = np.clip((out * 255.0).round(), 0, 255) / 255.
-    elif clip:
-        out = np.clip(out, 0, 1)
-    elif rounds:
-        out = (out * 255.0).round() / 255.
-
-    return out
-
-
-# Implementation reference `https://github.com/scikit-image/scikit-image/blob/main/skimage/util/noise.py#L37-L219`
-def generate_poisson_noise_pt(image, scale=1.0, gray_noise=0):
-    """Generate a batch of poisson noise (PyTorch version)
-    Args:
-        image (Tensor): Input image, shape (b, c, h, w), range [0, 1], float32.
-        scale (float | Tensor): Noise scale. Number or Tensor with shape (b).
-            Default: 1.0.
-        gray_noise (float | Tensor): 0-1 number or Tensor with shape (b).
-            0 for False, 1 for True. Default: 0.
-    Returns:
-        (Tensor): Returned noisy image, shape (b, c, h, w), range[0, 1],
-            float32.
-    """
-    b, _, h, w = image.size()
-
-    if isinstance(gray_noise, (float, int)):
-        cal_gray_noise = gray_noise > 0
-    else:
-        gray_noise = gray_noise.view(b, 1, 1, 1)
-        cal_gray_noise = torch.sum(gray_noise) > 0
-    if cal_gray_noise:
-        img_gray = rgb_to_grayscale(image, num_output_channels=1)
-        # round and clip image for counting vals correctly
-        img_gray = torch.clamp((img_gray * 255.0).round(), 0, 255) / 255.
-        # use for-loop to get the unique values for each sample
-        vals_list = [len(torch.unique(img_gray[i, :, :, :])) for i in range(b)]
-        vals_list = [2 ** np.ceil(np.log2(vals)) for vals in vals_list]
-        vals = img_gray.new_tensor(vals_list).view(b, 1, 1, 1)
-        out = torch.poisson(img_gray * vals) / vals
-        noise_gray = out - img_gray
-        noise_gray = noise_gray.expand(b, 3, h, w)
-
-    # always calculate color noise
-    # round and clip image for counting vals correctly
-    image = torch.clamp((image * 255.0).round(), 0, 255) / 255.
-    # use for-loop to get the unique values for each sample
-    vals_list = [len(torch.unique(image[i, :, :, :])) for i in range(b)]
-    vals_list = [2 ** np.ceil(np.log2(vals)) for vals in vals_list]
-    vals = image.new_tensor(vals_list).view(b, 1, 1, 1)
-    out = torch.poisson(image * vals) / vals
-    noise = out - image
-
-    if cal_gray_noise:
-        noise = noise * (1 - gray_noise) + noise_gray * gray_noise
-    if not isinstance(scale, (float, int)):
-        scale = scale.view(b, 1, 1, 1)
-
-    poisson_noise = noise * scale
-
-    return poisson_noise
-
-
-# Implementation reference `https://github.com/scikit-image/scikit-image/blob/main/skimage/util/noise.py#L37-L219`
-def add_poisson_noise_pt(image, scale=1.0, clip=True, rounds=False, gray_noise=0):
-    """Add poisson noise to a batch of images (PyTorch version).
-    Args:
-        image (Tensor): Input image, shape (b, c, h, w), range [0, 1], float32.
-        scale (float | Tensor): Noise scale. Number or Tensor with shape (b).
-            Default: 1.0.
-        gray_noise (float | Tensor): 0-1 number or Tensor with shape (b).
-            0 for False, 1 for True. Default: 0.
-    Returns:
-        (Tensor): Returned noisy image, shape (b, c, h, w), range[0, 1],
-            float32.
-    """
-    noise = generate_poisson_noise_pt(image, scale, gray_noise)
-    out = image + noise
-
-    if clip and rounds:
-        out = torch.clamp((out * 255.0).round(), 0, 255) / 255.
-    elif clip:
-        out = torch.clamp(out, 0, 1)
-    elif rounds:
-        out = (out * 255.0).round() / 255.
-
-    return out
-
-
-# Implementation reference `https://github.com/scikit-image/scikit-image/blob/main/skimage/util/noise.py#L37-L219`
-def random_generate_poisson_noise(image, scale_range=(0, 1.0), gray_prob=0):
-    scale = np.random.uniform(scale_range[0], scale_range[1])
-
-    if np.random.uniform() < gray_prob:
-        gray_noise = True
-    else:
-        gray_noise = False
-
-    poisson_noise = generate_poisson_noise(image, scale, gray_noise)
-
-    return poisson_noise
-
-
-# Implementation reference `https://github.com/scikit-image/scikit-image/blob/main/skimage/util/noise.py#L37-L219`
-def random_add_poisson_noise(image, scale_range=(0, 1.0), gray_prob=0, clip=True, rounds=False):
-    noise = random_generate_poisson_noise(image, scale_range, gray_prob)
-    out = image + noise
-
-    if clip and rounds:
-        out = np.clip((out * 255.0).round(), 0, 255) / 255.
-    elif clip:
-        out = np.clip(out, 0, 1)
-    elif rounds:
-        out = (out * 255.0).round() / 255.
-
-    return out
-
-
-# Implementation reference `https://github.com/scikit-image/scikit-image/blob/main/skimage/util/noise.py#L37-L219`
-def random_generate_poisson_noise_pt(image, scale_range=(0, 1.0), gray_prob=0):
-    scale = torch.rand(image.size(0), dtype=image.dtype, device=image.device) * (scale_range[1] - scale_range[0]) + \
-            scale_range[0]
-    gray_noise = torch.rand(image.size(0), dtype=image.dtype, device=image.device)
-    gray_noise = (gray_noise < gray_prob).float()
-    poisson_noise = generate_poisson_noise_pt(image, scale, gray_noise)
-
-    return poisson_noise
-
-
-# Implementation reference `https://github.com/scikit-image/scikit-image/blob/main/skimage/util/noise.py#L37-L219`
-def random_add_poisson_noise_pt(image, scale_range=(0, 1.0), gray_prob=0, clip=True, rounds=False):
-    noise = random_generate_poisson_noise_pt(image, scale_range, gray_prob)
-    out = image + noise
-    if clip and rounds:
-        out = torch.clamp((out * 255.0).round(), 0, 255) / 255.
-    elif clip:
-        out = torch.clamp(out, 0, 1)
-    elif rounds:
-        out = (out * 255.0).round() / 255.
-    return out
-
-
-# Implementation reference `https://github.com/scikit-image/scikit-image/blob/main/skimage/util/noise.py#L37-L219`
-def add_jpg_compression(image, quality=90):
-    """Add JPG compression artifacts.
-    Args:
-        image (Numpy array): Input image, shape (h, w, c), range [0, 1], float32.
-        quality (float): JPG compression quality. 0 for lowest quality, 100 for
-            best quality. Default: 90.
-    Returns:
-        (Numpy array): Returned image after JPG, shape (h, w, c), range[0, 1],
-            float32.
-    """
-    image = np.clip(image, 0, 1)
-    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), quality]
-    _, encimg = cv2.imencode('.jpg', image * 255., encode_param)
-    image = np.float32(cv2.imdecode(encimg, 1)) / 255.
-    return image
-
-
-# Implementation reference `https://github.com/scikit-image/scikit-image/blob/main/skimage/util/noise.py#L37-L219`
-def random_add_jpg_compression(image, quality_range=(90, 100)):
-    """Randomly add JPG compression artifacts.
-    Args:
-        image (Numpy array): Input image, shape (h, w, c), range [0, 1], float32.
-        quality_range (tuple[float] | list[float]): JPG compression quality
-            range. 0 for lowest quality, 100 for best quality.
-            Default: (90, 100).
-    Returns:
-        (Numpy array): Returned image after JPG, shape (h, w, c), range[0, 1],
-            float32.
-    """
-    quality = np.random.uniform(quality_range[0], quality_range[1])
-    return add_jpg_compression(image, quality)
-
-
-def diff_round(x):
-    """ Differentiable rounding function
-    """
-    return torch.round(x) + (x - torch.round(x)) ** 3
-
-
-def quality_to_factor(quality):
-    """ Calculate factor corresponding to quality
-    Args:
-        quality(float): Quality for jpeg compression.
-    Returns:
-        float: Compression factor.
-    """
-    if quality < 50:
-        quality = 5000. / quality
-    else:
-        quality = 200. - quality * 2
-    return quality / 100.
-
-
-# ------------------------ compression ------------------------#
-class RGB2YCbCrJpeg(nn.Module):
-    """ Converts RGB image to YCbCr
-    """
-
-    def __init__(self):
-        super(RGB2YCbCrJpeg, self).__init__()
-        matrix = np.array([[0.299, 0.587, 0.114], [-0.168736, -0.331264, 0.5], [0.5, -0.418688, -0.081312]],
-                          dtype=np.float32).T
-        self.shift = nn.Parameter(torch.tensor([0., 128., 128.]))
-        self.matrix = nn.Parameter(torch.from_numpy(matrix))
-
-    def forward(self, image):
-        """
-        Args:
-            image(Tensor): batch x 3 x height x width
-        Returns:
-            Tensor: batch x height x width x 3
-        """
-        image = image.permute(0, 2, 3, 1)
-        result = torch.tensordot(image, self.matrix, dims=1) + self.shift
-        return result.view(image.shape)
-
-
-class ChromaSubsampling(nn.Module):
-    """ Chroma subsampling on CbCr channels
-    """
-
-    def __init__(self):
-        super(ChromaSubsampling, self).__init__()
-
-    def forward(self, image):
-        """
-        Args:
-            image(tensor): batch x height x width x 3
-        Returns:
-            y(tensor): batch x height x width
-            cb(tensor): batch x height/2 x width/2
-            cr(tensor): batch x height/2 x width/2
-        """
-        image_2 = image.permute(0, 3, 1, 2).clone()
-        cb = F.avg_pool2d(image_2[:, 1, :, :].unsqueeze(1), kernel_size=2, stride=(2, 2), count_include_pad=False)
-        cr = F.avg_pool2d(image_2[:, 2, :, :].unsqueeze(1), kernel_size=2, stride=(2, 2), count_include_pad=False)
-        cb = cb.permute(0, 2, 3, 1)
-        cr = cr.permute(0, 2, 3, 1)
-        return image[:, :, :, 0], cb.squeeze(3), cr.squeeze(3)
-
-
-class BlockSplitting(nn.Module):
-    """ Splitting image into patches
-    """
-
-    def __init__(self):
-        super(BlockSplitting, self).__init__()
-        self.k = 8
-
-    def forward(self, image):
-        """
-        Args:
-            image(tensor): batch x height x width
-        Returns:
-            Tensor:  batch x h*w/64 x h x w
-        """
-        height, _ = image.shape[1:3]
-        batch_size = image.shape[0]
-        image_reshaped = image.view(batch_size, height // self.k, self.k, -1, self.k)
-        image_transposed = image_reshaped.permute(0, 1, 3, 2, 4)
-        return image_transposed.contiguous().view(batch_size, -1, self.k, self.k)
-
-
-class DCT8x8(nn.Module):
-    """ Discrete Cosine Transformation
-    """
-
-    def __init__(self):
-        super(DCT8x8, self).__init__()
-        tensor = np.zeros((8, 8, 8, 8), dtype=np.float32)
-        for x, y, u, v in itertools.product(range(8), repeat=4):
-            tensor[x, y, u, v] = np.cos((2 * x + 1) * u * np.pi / 16) * np.cos((2 * y + 1) * v * np.pi / 16)
-        alpha = np.array([1. / np.sqrt(2)] + [1] * 7)
-        self.tensor = nn.Parameter(torch.from_numpy(tensor).float())
-        self.scale = nn.Parameter(torch.from_numpy(np.outer(alpha, alpha) * 0.25).float())
-
-    def forward(self, image):
-        """
-        Args:
-            image(tensor): batch x height x width
-        Returns:
-            Tensor: batch x height x width
-        """
-        image = image - 128
-        result = self.scale * torch.tensordot(image, self.tensor, dims=2)
-        result.view(image.shape)
-        return result
-
-
-class YQuantize(nn.Module):
-    """ JPEG Quantization for Y channel
-    Args:
-        rounding(function): rounding function to use
-    """
-
-    def __init__(self, rounding):
-        super(YQuantize, self).__init__()
-        self.rounding = rounding
-        self.y_table = y_table
-
-    def forward(self, image, factor=1):
-        """
-        Args:
-            image(tensor): batch x height x width
-        Returns:
-            Tensor: batch x height x width
-        """
-        if isinstance(factor, (int, float)):
-            image = image.float() / (self.y_table * factor)
-        else:
-            b = factor.size(0)
-            table = self.y_table.expand(b, 1, 8, 8) * factor.view(b, 1, 1, 1)
-            image = image.float() / table
-        image = self.rounding(image)
-        return image
-
-
-class CQuantize(nn.Module):
-    """ JPEG Quantization for CbCr channels
-    Args:
-        rounding(function): rounding function to use
-    """
-
-    def __init__(self, rounding):
-        super(CQuantize, self).__init__()
-        self.rounding = rounding
-        self.c_table = c_table
-
-    def forward(self, image, factor=1):
-        """
-        Args:
-            image(tensor): batch x height x width
-        Returns:
-            Tensor: batch x height x width
-        """
-        if isinstance(factor, (int, float)):
-            image = image.float() / (self.c_table * factor)
-        else:
-            b = factor.size(0)
-            table = self.c_table.expand(b, 1, 8, 8) * factor.view(b, 1, 1, 1)
-            image = image.float() / table
-        image = self.rounding(image)
-        return image
-
-
-class CompressJpeg(nn.Module):
-    """Full JPEG compression algorithm
-    Args:
-        rounding(function): rounding function to use
-    """
-
-    def __init__(self, rounding=torch.round):
-        super(CompressJpeg, self).__init__()
-        self.l1 = nn.Sequential(RGB2YCbCrJpeg(), ChromaSubsampling())
-        self.l2 = nn.Sequential(BlockSplitting(), DCT8x8())
-        self.c_quantize = CQuantize(rounding=rounding)
-        self.y_quantize = YQuantize(rounding=rounding)
-
-    def forward(self, image, factor=1):
-        """
-        Args:
-            image(tensor): batch x 3 x height x width
-        Returns:
-            dict(tensor): Compressed tensor with batch x h*w/64 x 8 x 8.
-        """
-        y, cb, cr = self.l1(image * 255)
-        components = {'y': y, 'cb': cb, 'cr': cr}
-        for k in components.keys():
-            comp = self.l2(components[k])
-            if k in ('cb', 'cr'):
-                comp = self.c_quantize(comp, factor=factor)
-            else:
-                comp = self.y_quantize(comp, factor=factor)
-
-            components[k] = comp
-
-        return components['y'], components['cb'], components['cr']
-
-
-# ------------------------ decompression ------------------------#
-
-
-class YDequantize(nn.Module):
-    """Dequantize Y channel
-    """
-
-    def __init__(self):
-        super(YDequantize, self).__init__()
-        self.y_table = y_table
-
-    def forward(self, image, factor=1):
-        """
-        Args:
-            image(tensor): batch x height x width
-        Returns:
-            Tensor: batch x height x width
-        """
-        if isinstance(factor, (int, float)):
-            out = image * (self.y_table * factor)
-        else:
-            b = factor.size(0)
-            table = self.y_table.expand(b, 1, 8, 8) * factor.view(b, 1, 1, 1)
-            out = image * table
-        return out
-
-
-class CDequantize(nn.Module):
-    """Dequantize CbCr channel
-    """
-
-    def __init__(self):
-        super(CDequantize, self).__init__()
-        self.c_table = c_table
-
-    def forward(self, image, factor=1):
-        """
-        Args:
-            image(tensor): batch x height x width
-        Returns:
-            Tensor: batch x height x width
-        """
-        if isinstance(factor, (int, float)):
-            out = image * (self.c_table * factor)
-        else:
-            b = factor.size(0)
-            table = self.c_table.expand(b, 1, 8, 8) * factor.view(b, 1, 1, 1)
-            out = image * table
-        return out
-
-
-class iDCT8x8(nn.Module):
-    """Inverse discrete Cosine Transformation
-    """
-
-    def __init__(self):
-        super(iDCT8x8, self).__init__()
-        alpha = np.array([1. / np.sqrt(2)] + [1] * 7)
-        self.alpha = nn.Parameter(torch.from_numpy(np.outer(alpha, alpha)).float())
-        tensor = np.zeros((8, 8, 8, 8), dtype=np.float32)
-        for x, y, u, v in itertools.product(range(8), repeat=4):
-            tensor[x, y, u, v] = np.cos((2 * u + 1) * x * np.pi / 16) * np.cos((2 * v + 1) * y * np.pi / 16)
-        self.tensor = nn.Parameter(torch.from_numpy(tensor).float())
-
-    def forward(self, image):
-        """
-        Args:
-            image(tensor): batch x height x width
-        Returns:
-            Tensor: batch x height x width
-        """
-        image = image * self.alpha
-        result = 0.25 * torch.tensordot(image, self.tensor, dims=2) + 128
-        result.view(image.shape)
-        return result
-
-
-class BlockMerging(nn.Module):
-    """Merge patches into image
-    """
-
-    def __init__(self):
-        super(BlockMerging, self).__init__()
-
-    def forward(self, patches, height, width):
-        """
-        Args:
-            patches(tensor) batch x height*width/64, height x width
-            height(int)
-            width(int)
-        Returns:
-            Tensor: batch x height x width
-        """
-        k = 8
-        batch_size = patches.shape[0]
-        image_reshaped = patches.view(batch_size, height // k, width // k, k, k)
-        image_transposed = image_reshaped.permute(0, 1, 3, 2, 4)
-        return image_transposed.contiguous().view(batch_size, height, width)
-
-
-class ChromaUpsampling(nn.Module):
-    """Upsample chroma layers
-    """
-
-    def __init__(self):
-        super(ChromaUpsampling, self).__init__()
-
-    def forward(self, y, cb, cr):
-        """
-        Args:
-            y(tensor): y channel image
-            cb(tensor): cb channel
-            cr(tensor): cr channel
-        Returns:
-            Tensor: batch x height x width x 3
-        """
-
-        def repeat(x, k=2):
-            height, width = x.shape[1:3]
-            x = x.unsqueeze(-1)
-            x = x.repeat(1, 1, k, k)
-            x = x.view(-1, height * k, width * k)
-            return x
-
-        cb = repeat(cb)
-        cr = repeat(cr)
-        return torch.cat([y.unsqueeze(3), cb.unsqueeze(3), cr.unsqueeze(3)], dim=3)
-
-
-class YCbCr2RGBJpeg(nn.Module):
-    """Converts YCbCr image to RGB JPEG
-    """
-
-    def __init__(self):
-        super(YCbCr2RGBJpeg, self).__init__()
-
-        matrix = np.array([[1., 0., 1.402], [1, -0.344136, -0.714136], [1, 1.772, 0]], dtype=np.float32).T
-        self.shift = nn.Parameter(torch.tensor([0, -128., -128.]))
-        self.matrix = nn.Parameter(torch.from_numpy(matrix))
-
-    def forward(self, image):
-        """
-        Args:
-            image(tensor): batch x height x width x 3
-        Returns:
-            Tensor: batch x 3 x height x width
-        """
-        result = torch.tensordot(image + self.shift, self.matrix, dims=1)
-        return result.view(image.shape).permute(0, 3, 1, 2)
-
-
-class DeCompressJpeg(nn.Module):
-    """Full JPEG decompression algorithm
-    Args:
-        rounding(function): rounding function to use
-    """
-
-    def __init__(self, rounding=torch.round):
-        super(DeCompressJpeg, self).__init__()
-        self.c_dequantize = CDequantize()
-        self.y_dequantize = YDequantize()
-        self.idct = iDCT8x8()
-        self.merging = BlockMerging()
-        self.chroma = ChromaUpsampling()
-        self.colors = YCbCr2RGBJpeg()
-
-    def forward(self, y, cb, cr, imgh, imgw, factor=1):
-        """
-        Args:
-            compressed(dict(tensor)): batch x h*w/64 x 8 x 8
-            imgh(int)
-            imgw(int)
-            factor(float)
-        Returns:
-            Tensor: batch x 3 x height x width
-        """
-        components = {'y': y, 'cb': cb, 'cr': cr}
-        for k in components.keys():
-            if k in ('cb', 'cr'):
-                comp = self.c_dequantize(components[k], factor=factor)
-                height, width = int(imgh / 2), int(imgw / 2)
-            else:
-                comp = self.y_dequantize(components[k], factor=factor)
-                height, width = imgh, imgw
-            comp = self.idct(comp)
-            components[k] = self.merging(comp, height, width)
-            #
-        image = self.chroma(components['y'], components['cb'], components['cr'])
-        image = self.colors(image)
-
-        image = torch.min(255 * torch.ones_like(image), torch.max(torch.zeros_like(image), image))
-        return image / 255
-
-
-class DiffJPEG(nn.Module):
-    """This JPEG algorithm result is slightly different from cv2.
-    DiffJPEG supports batch processing.
-    Args:
-        differentiable(bool): If True, uses custom differentiable rounding function, if False, uses standard torch.round
-    """
-
-    def __init__(self, differentiable=True):
-        super(DiffJPEG, self).__init__()
-        if differentiable:
-            rounding = diff_round
-        else:
-            rounding = torch.round
-
-        self.compress = CompressJpeg(rounding=rounding)
-        self.decompress = DeCompressJpeg(rounding=rounding)
-
-    def forward(self, x, quality):
-        """
-        Args:
-            x (Tensor): Input image, bchw, rgb, [0, 1]
-            quality(float): Quality factor for jpeg compression scheme.
-        """
-        factor = quality
-        if isinstance(factor, (int, float)):
-            factor = quality_to_factor(factor)
-        else:
-            for i in range(factor.size(0)):
-                factor[i] = quality_to_factor(factor[i])
-        h, w = x.size()[-2:]
-        h_pad, w_pad = 0, 0
-        # why should use 16
-        if h % 16 != 0:
-            h_pad = 16 - h % 16
-        if w % 16 != 0:
-            w_pad = 16 - w % 16
-        x = F.pad(x, (0, w_pad, 0, h_pad), mode='constant', value=0)
-
-        y, cb, cr = self.compress(x, factor=factor)
-        recovered = self.decompress(y, cb, cr, (h + h_pad), (w + w_pad), factor=factor)
-        recovered = recovered[:, :, 0:h, 0:w]
-        return recovered
-
-
-def blur(image, kernel):
-    """PyTorch version of cv2.filter2D
-    Args:
-        image (Tensor): (b, c, h, w)
-        kernel (Tensor): (b, k, k)
-    """
-    k = kernel.size(-1)
-    b, c, h, w = image.size()
-    if k % 2 == 1:
-        image = F.pad(image, (k // 2, k // 2, k // 2, k // 2), mode='reflect')
-    else:
-        raise ValueError('Wrong kernel size')
-
-    ph, pw = image.size()[-2:]
-
-    if kernel.size(0) == 1:
-        # apply the same kernel to all batch images
-        image = image.view(b * c, 1, ph, pw)
-        kernel = kernel.view(1, 1, k, k)
-        return F.conv2d(image, kernel, padding=0).view(b, c, h, w)
-    else:
-        image = image.view(1, b * c, ph, pw)
-        kernel = kernel.view(b, 1, k, k).repeat(1, c, 1, 1).view(b * c, 1, k, k)
-        return F.conv2d(image, kernel, groups=b * c).view(b, c, h, w)
-
-
-def usm_sharp(img, weight=0.5, radius=50, threshold=10):
-    """USM sharpening.
-    Input image: I; Blurry image: B.
-    1. sharp = I + weight * (I - B)
-    2. Mask = 1 if abs(I - B) > threshold, else: 0
-    3. Blur mask:
-    4. Out = Mask * sharp + (1 - Mask) * I
-    Args:
-        img (Numpy array): Input image, HWC, BGR; float32, [0, 1].
-        weight (float): Sharp weight. Default: 1.
-        radius (float): Kernel size of Gaussian blur. Default: 50.
-        threshold (int):
-    """
-    if radius % 2 == 0:
-        radius += 1
-    blur = cv2.GaussianBlur(img, (radius, radius), 0)
-    residual = img - blur
-    mask = np.abs(residual) * 255 > threshold
-    mask = mask.astype('float32')
-    soft_mask = cv2.GaussianBlur(mask, (radius, radius), 0)
-
-    sharp = img + weight * residual
-    sharp = np.clip(sharp, 0, 1)
-    return soft_mask * sharp + (1 - soft_mask) * img
-
-
-class USMSharp(torch.nn.Module):
-
-    def __init__(self, radius=50, sigma=0):
-        super(USMSharp, self).__init__()
-        if radius % 2 == 0:
-            radius += 1
-        self.radius = radius
-        kernel = cv2.getGaussianKernel(radius, sigma)
-        kernel = torch.FloatTensor(np.dot(kernel, kernel.transpose())).unsqueeze_(0)
-        self.register_buffer('kernel', kernel)
-
-    def forward(self, img, weight=0.5, threshold=10):
-        usm_blur = blur(img, self.kernel)
-        residual = img - usm_blur
-
-        mask = torch.abs(residual) * 255 > threshold
-        mask = mask.float()
-        soft_mask = blur(mask, self.kernel)
-        sharp = img + weight * residual
-        sharp = torch.clip(sharp, 0, 1)
-        return soft_mask * sharp + (1 - soft_mask) * img
