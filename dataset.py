@@ -86,7 +86,7 @@ class TrainValidImageDataset(Dataset):
                     omega_c = np.random.uniform(np.pi / 3, np.pi)
                 else:
                     omega_c = np.random.uniform(np.pi / 5, np.pi)
-                kernel1 = imgproc.sinc_kernel(omega_c, kernel_size1, pad_to=False)
+                kernel1 = imgproc.generate_sinc_kernel(omega_c, kernel_size1, padding=False)
             else:
                 kernel1 = imgproc.random_mixed_kernels(
                     self.parameters["gaussian_kernel_type"],
@@ -110,7 +110,7 @@ class TrainValidImageDataset(Dataset):
                     omega_c = np.random.uniform(np.pi / 3, np.pi)
                 else:
                     omega_c = np.random.uniform(np.pi / 5, np.pi)
-                kernel2 = imgproc.sinc_kernel(omega_c, kernel_size2, pad_to=False)
+                kernel2 = imgproc.generate_sinc_kernel(omega_c, kernel_size2, padding=False)
             else:
                 kernel2 = imgproc.random_mixed_kernels(
                     self.parameters["gaussian_kernel_type"],
@@ -131,7 +131,7 @@ class TrainValidImageDataset(Dataset):
             if np.random.uniform() < self.parameters["sinc_kernel_probability3"]:
                 kernel_size2 = random.choice(self.parameters["gaussian_kernel_range"])
                 omega_c = np.random.uniform(np.pi / 3, np.pi)
-                sinc_kernel = imgproc.sinc_kernel(omega_c, kernel_size2, pad_to=self.parameters["sinc_kernel_size"])
+                sinc_kernel = imgproc.generate_sinc_kernel(omega_c, kernel_size2, padding=self.parameters["sinc_kernel_size"])
                 sinc_kernel = torch.FloatTensor(sinc_kernel)
             else:
                 sinc_kernel = self.sinc_tensor
