@@ -42,7 +42,7 @@ Both training and testing only need to modify the `config.py` file.
 
 - line 77: `upscale_factor` change to `4`.
 - line 79: `mode` change to `test`.
-- line 159: `model_path` change to `results/pretrained_models/RealESRGAN_x4-DFO2K-e4f68c8d.pth.tar`.
+- line 159: `model_path` change to `results/pretrained_models/RealESRGAN_x4-DFO2K-678bf481.pth.tar`.
 
 ### Train RealESRNet model
 
@@ -81,13 +81,13 @@ In the following table, the value in `()` indicates the result of the project, a
 
 |   Method   | Scale | Set5 (NIQE) | Set14 (NIQE) |
 |:----------:|:-----:|:-----------:|:------------:|
-| RealESRNet |   4   | -(**9.67**) | -(**7.09**)  |
-| RealESRGAN |   4   | -(**7.10**) | -(**4.79**)  |
+| RealESRNet |   4   | -(**9.80**) | -(**7.08**)  |
+| RealESRGAN |   4   | -(**7.09**) | -(**4.74**)  |
 
 ```bash
-# Download `RealESRGAN_x4-DFO2K-e4f68c8d.pth.tar`` weights to `./results/pretrained_models`
+# Download `RealESRGAN_x4-DFO2K-678bf481.pth.tar` weights to `./results/pretrained_models`
 # More detail see `README.md<Download weights>`
-python ./inference.py --inputs_path ./figure/tree_lr.png --output_path ./figure/tree_sr.png --weights_path ./results/pretrained_models/RealESRGAN_x4-DFO2K-e4f68c8d.pth.tar`
+python ./inference.py --inputs_path ./figure/tree_lr.png --output_path ./figure/tree_sr.png --weights_path ./results/pretrained_models/RealESRGAN_x4-DFO2K-678bf481.pth.tar`
 ```
 
 Input: 
@@ -100,7 +100,7 @@ Output:
 
 ```text
 Build Real_ESRGAN model successfully.
-Load Real_ESRGAN model weights `./results/pretrained_models/RealESRGAN_x4-DFO2K-e4f68c8d.pth.tar` successfully.
+Load Real_ESRGAN model weights `./results/pretrained_models/RealESRGAN_x4-DFO2K-678bf481.pth.tar` successfully.
 SR image save to `./figure/tree_sr.png`
 ```
 
