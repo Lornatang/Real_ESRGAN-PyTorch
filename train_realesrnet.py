@@ -45,8 +45,8 @@ def main():
     train_prefetcher, valid_prefetcher, test_prefetcher = load_dataset()
     print("Load all datasets successfully.")
 
-    model = build_model()
-    print("Build RealESRNet model successfully.")
+    model, ema_model = build_model()
+    print("Build all model successfully.")
 
     pixel_criterion = define_loss()
     print("Define all loss functions successfully.")
@@ -64,13 +64,19 @@ def main():
         # Restore the parameters in the training node to this point
         start_epoch = checkpoint["epoch"]
         best_niqe = checkpoint["best_niqe"]
-        # Load checkpoint state dict. Extract the fitted model weights
+        # Load model state dict. Extract the fitted model weights
         model_state_dict = model.state_dict()
-        new_state_dict = {k.replace("model.", ""): v for k, v in checkpoint["state_dict"].items() if
-                          k in model_state_dict.keys()}
-        # Overwrite the pretrained model weights to the current model
-        model_state_dict.update(new_state_dict)
+        state_dict = {k: v for k, v in checkpoint["state_dict"].items() if k in model_state_dict.keys()}
+        # Overwrite the model weights to the current model (base model)
+        model_state_dict.update(state_dict)
         model.load_state_dict(model_state_dict)
+        # Load ema model state dict. Extract the fitted model weights
+        ema_model_state_dict = ema_model.state_dict()
+        ema_state_dict = {k.replace("model.", ""): v for k, v in checkpoint["ema_state_dict"].items() if
+                          k in model_state_dict.keys()}
+        # Overwrite the model weights to the current model (ema model)
+        ema_model_state_dict.update(ema_state_dict)
+        ema_model.load_state_dict(ema_model_state_dict)
         # Load the optimizer model
         optimizer.load_state_dict(checkpoint["optimizer"])
         # Load the optimizer scheduler
@@ -97,11 +103,6 @@ def main():
     # Transfer the IQA model to the specified device
     niqe_model = niqe_model.to(device=config.device)
 
-    # Create an Exponential Moving Average Model
-    ema_model = EMA(model, config.ema_model_weight_decay)
-    ema_model = ema_model.to(device=config.device)
-    ema_model.register()
-
     for epoch in range(start_epoch, config.epochs):
         train(model, ema_model, train_prefetcher, pixel_criterion, optimizer, epoch, scaler, writer)
         _ = validate(model, ema_model, valid_prefetcher, epoch, writer, niqe_model, "Valid")
@@ -116,7 +117,8 @@ def main():
         best_niqe = min(niqe, best_niqe)
         torch.save({"epoch": epoch + 1,
                     "best_niqe": best_niqe,
-                    "state_dict": ema_model.state_dict(),
+                    "state_dict": model.state_dict(),
+                    "ema_state_dict": ema_model.state_dict(),
                     "optimizer": optimizer.state_dict(),
                     "scheduler": scheduler.state_dict()},
                    os.path.join(samples_dir, f"g_epoch_{epoch + 1}.pth.tar"))
@@ -174,11 +176,16 @@ def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher, CUDAPrefetcher]:
     return train_prefetcher, valid_prefetcher, test_prefetcher
 
 
-def build_model() -> nn.Module:
+def build_model() -> [nn.Module, nn.Module]:
     model = Generator(config.in_channels, config.out_channels, config.upscale_factor)
     model = model.to(device=config.device)
 
-    return model
+    # Create an Exponential Moving Average Model
+    ema_model = EMA(model, config.ema_model_weight_decay)
+    ema_model = ema_model.to(device=config.device)
+    ema_model.register()
+
+    return model, ema_model
 
 
 def define_loss() -> nn.L1Loss:

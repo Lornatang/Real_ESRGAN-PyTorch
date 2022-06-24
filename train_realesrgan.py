@@ -45,8 +45,8 @@ def main():
     train_prefetcher, valid_prefetcher, test_prefetcher = load_dataset()
     print("Load dataset successfully.")
 
-    discriminator, generator = build_model()
-    print("Build RealESRGAN model successfully.")
+    discriminator, generator, ema_model = build_model()
+    print("Build all model successfully.")
 
     pixel_criterion, content_criterion, adversarial_criterion = define_loss()
     print("Define all loss functions successfully.")
@@ -90,13 +90,19 @@ def main():
         # Restore the parameters in the training node to this point
         start_epoch = checkpoint["epoch"]
         best_niqe = checkpoint["best_niqe"]
-        # Load checkpoint state dict. Extract the fitted model weights
+        # Load model state dict. Extract the fitted model weights
         model_state_dict = generator.state_dict()
-        new_state_dict = {k.replace("model.", ""): v for k, v in checkpoint["state_dict"].items() if
-                          k in model_state_dict.keys()}
-        # Overwrite the pretrained model weights to the current model
-        model_state_dict.update(new_state_dict)
+        state_dict = {k: v for k, v in checkpoint["state_dict"].items() if k in model_state_dict.keys()}
+        # Overwrite the model weights to the current model (base model)
+        model_state_dict.update(state_dict)
         generator.load_state_dict(model_state_dict)
+        # Load ema model state dict. Extract the fitted model weights
+        ema_model_state_dict = ema_model.state_dict()
+        ema_state_dict = {k.replace("model.", ""): v for k, v in checkpoint["ema_state_dict"].items() if
+                          k in model_state_dict.keys()}
+        # Overwrite the model weights to the current model (ema model)
+        ema_model_state_dict.update(ema_state_dict)
+        ema_model.load_state_dict(ema_model_state_dict)
         # Load the optimizer model
         g_optimizer.load_state_dict(checkpoint["optimizer"])
         # Load the scheduler model
@@ -122,11 +128,6 @@ def main():
 
     # Transfer the IQA model to the specified device
     niqe_model = niqe_model.to(device=config.device)
-
-    # Create an Exponential Moving Average Model
-    ema_model = EMA(generator, config.ema_model_weight_decay)
-    ema_model = ema_model.to(device=config.device)
-    ema_model.register()
 
     for epoch in range(start_epoch, config.epochs):
         train(discriminator,
@@ -160,7 +161,8 @@ def main():
                    os.path.join(samples_dir, f"d_epoch_{epoch + 1}.pth.tar"))
         torch.save({"epoch": epoch + 1,
                     "best_niqe": best_niqe,
-                    "state_dict": ema_model.state_dict(),
+                    "state_dict": generator.state_dict(),
+                    "ema_state_dict": ema_model.state_dict(),
                     "optimizer": g_optimizer.state_dict(),
                     "scheduler": g_scheduler.state_dict()},
                    os.path.join(samples_dir, f"g_epoch_{epoch + 1}.pth.tar"))
@@ -221,7 +223,7 @@ def load_dataset() -> [CUDAPrefetcher, CUDAPrefetcher, CUDAPrefetcher]:
     return train_prefetcher, valid_prefetcher, test_prefetcher
 
 
-def build_model() -> [nn.Module, nn.Module]:
+def build_model() -> [nn.Module, nn.Module, nn.Module]:
     discriminator = Discriminator()
     generator = Generator(config.in_channels, config.out_channels, config.upscale_factor)
 
@@ -229,7 +231,12 @@ def build_model() -> [nn.Module, nn.Module]:
     discriminator = discriminator.to(device=config.device)
     generator = generator.to(device=config.device)
 
-    return discriminator, generator
+    # Create an Exponential Moving Average Model
+    ema_model = EMA(generator, config.ema_model_weight_decay)
+    ema_model = ema_model.to(device=config.device)
+    ema_model.register()
+
+    return discriminator, generator, ema_model
 
 
 def define_loss() -> [nn.L1Loss, ContentLoss, nn.BCEWithLogitsLoss]:
