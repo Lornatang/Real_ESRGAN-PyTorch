@@ -98,8 +98,7 @@ def main():
         generator.load_state_dict(model_state_dict)
         # Load ema model state dict. Extract the fitted model weights
         ema_model_state_dict = ema_model.state_dict()
-        ema_state_dict = {k.replace("model.", ""): v for k, v in checkpoint["ema_state_dict"].items() if
-                          k in model_state_dict.keys()}
+        ema_state_dict = {k: v for k, v in checkpoint["ema_state_dict"].items() if k in ema_model_state_dict.keys()}
         # Overwrite the model weights to the current model (ema model)
         ema_model_state_dict.update(ema_state_dict)
         ema_model.load_state_dict(ema_model_state_dict)
