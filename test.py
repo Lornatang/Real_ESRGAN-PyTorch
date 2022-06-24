@@ -31,7 +31,10 @@ def main() -> None:
 
     # Load the super-resolution model weights
     checkpoint = torch.load(config.model_path, map_location=lambda storage, loc: storage)
-    model.load_state_dict({k.replace("model.", ""): v for k, v in checkpoint["ema_state_dict"].items()})
+    model_state_dict = model.state_dict()
+    state_dict = {k.replace("model.", ""): v for k, v in checkpoint["ema_state_dict"].items() if
+                  k.replace("model.", "") in model_state_dict.keys()}
+    model.load_state_dict(state_dict)
     print(f"Load Real_ESRGAN model weights `{os.path.abspath(config.model_path)}` successfully.")
 
     # Create a folder of super-resolution experiment results
